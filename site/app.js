@@ -1,0 +1,510 @@
+'use strict';
+// Season HQ: renders the refresh's data (site/data.json, encrypted as data.enc when hosted) in five
+// tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
+
+const S = {
+  data: null, key: null, tab: 'today', wtab: 'adds', pos: '', instant: false, q: '', who: 'all',
+  prev: null, changes: [],
+};
+const TZ = 'America/New_York';
+const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+const SLOT_ORDER = ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UT', 'BE', 'IR'];
+const STALE_MIN = 90;
+const $ = (sel, el = document) => el.querySelector(sel);
+
+// ---------- storage (best effort: private windows can refuse it) ----------
+function getItem(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function setItem(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+function getJSON(k) { try { return JSON.parse(getItem(k) || 'null'); } catch (e) { return null; } }
+
+// ---------- formatting ----------
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function n0(x) { return x == null ? '–' : Math.round(x).toLocaleString('en-US'); }
+function n1(x) { return x == null ? '–' : (Math.round(x * 10) / 10).toFixed(1); }
+function signed(x) { return x == null ? '–' : (x > 0.5 ? '+' : x < -0.5 ? '−' : '') + n0(Math.abs(x)); }
+function isoDate(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d, 12)); }
+function dayLabel(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+function dayShort(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' }); }
+function timeLabel(ts) { return new Date(ts * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ }); }
+function whenLabel(ts) { return new Date(ts * 1000).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: TZ }); }
+function ago(ts) {
+  const s = Date.now() / 1000 - ts;
+  if (s < 90) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 2 * 86400) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+
+// ---------- data helpers ----------
+function P(id) { return S.data.players[String(id)]; }
+function team(tid) { return S.data.league.teams[String(tid)]; }
+function me() { return S.data.league.me; }
+function abbr(tid) { return tid ? ((team(tid) || {}).abbrev || '?') : 'FA'; }
+function myRoster() { return team(me()).roster; }
+function bySlot(a, b) { return SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot); }
+
+function statusChip(p) {
+  const inj = p.inj || {};
+  if (inj.fantasy === 'OFS') return '<span class="chip out" title="Out for the season">OFS</span>';
+  if (p.status === 'OUT') return '<span class="chip out">OUT</span>';
+  if (p.status === 'SUSPENSION') return '<span class="chip out">SUSP</span>';
+  if (p.status === 'DAY_TO_DAY') return '<span class="chip dtd">DTD</span>';
+  if (inj.status === 'Out') return '<span class="chip out" title="Out on the injury report; ESPN fantasy has not tagged him yet, so he is not IR-eligible">OUT*</span>';
+  return '';
+}
+function faChip(p) {
+  if (p.owner || S.data.waivers.all_on_waivers) return '';   // the banner says it once instead
+  if (p.fa === 'WAIVERS') {
+    const t = p.waiver_until ? whenLabel(p.waiver_until) : '';
+    return `<span class="chip wv" title="On waivers: claims process ${esc(t)}">W ${esc(t)}</span>`;
+  }
+  return '';
+}
+function meta(p) { return esc(p.team) + ' · ' + esc(p.pos.join('/') || '–'); }
+function nextGame(p) {
+  const g = (p.next || [])[0];
+  if (!g) return 'no games this week';
+  const [d, opp, home, tip] = g;
+  return `${dayShort(d)} ${home ? 'vs' : '@'} ${opp} ${timeLabel(tip)}`;
+}
+function ownerLabel(p) {
+  if (!p.owner) return 'free agent';
+  if (p.owner === me()) return 'yours';
+  return abbr(p.owner);
+}
+function isNew(p) {
+  const since = S.prev && S.prev.at;
+  return !!(since && (p.news || []).some(n => Date.parse(n.at) / 1000 > since));
+}
+
+function row(p, nums, opts = {}) {
+  if (!p) return '';
+  const cls = 'row' + (p.owner === me() && !opts.plain ? ' mine' : '');
+  const badge = (opts.badge || '') + (isNew(p) ? ' <span class="chip new" title="News since you last looked">NEW</span>' : '');
+  const left = `<div class="who"><div class="nm">${opts.prefix || ''}${esc(p.name)} ${statusChip(p)} ${faChip(p)}${badge}</div>`
+    + `<div class="meta">${opts.meta || meta(p)}</div></div>`;
+  const right = `<div class="nums">${nums.map(([label, value, c, optional]) =>
+    `<div class="num${optional ? ' opt' : ''}"><b class="${c || ''}">${value}</b><span>${label}</span></div>`).join('')}</div>`;
+  return `<div class="${cls}" data-pid="${p.id}">${left}${right}${opts.note ? `<div class="note">${opts.note}</div>` : ''}</div>`;
+}
+
+function injuryNote(p, long) {
+  const i = p.inj;
+  const bits = [];
+  if (i) {
+    const what = [i.side, i.type, i.detail].filter(Boolean).join(' ');
+    if (what) bits.push(esc(what));
+  }
+  if (p.ros.out && p.ros.back) bits.push(p.ros.season_over ? 'out for the season' : 'back ~' + dayLabel(p.ros.back));
+  if (i && i.short) bits.push(esc(long ? i.short : clip(i.short, 140)));
+  return bits.join(' · ');
+}
+function clip(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+// ---------- rendering ----------
+function render() {
+  const d = S.data;
+  $('#title').textContent = d.league.name + ' · ' + abbr(me());
+  freshness();
+  const urgent = d.actions.some(a => a.level === 'critical' || a.level === 'high');
+  for (const b of document.querySelectorAll('#tabs button')) {
+    b.classList.toggle('on', b.dataset.tab === S.tab);
+    b.setAttribute('aria-selected', b.dataset.tab === S.tab);
+    if (b.dataset.tab === 'today') b.innerHTML = 'Today' + (urgent ? '<span class="dot" title="Something needs doing"></span>' : '');
+  }
+  const views = { today: viewToday, roster: viewRoster, waivers: viewWaivers, injuries: viewInjuries, league: viewLeague };
+  $('#view').innerHTML = views[S.tab]();
+}
+
+function freshness() {
+  const d = S.data;
+  const el = $('#fresh');
+  const mins = (Date.now() / 1000 - d.generated) / 60;
+  el.textContent = 'Updated ' + timeLabel(d.generated) + ' · ' + ago(d.generated);
+  el.classList.toggle('stale', mins > STALE_MIN);
+  el.title = mins > STALE_MIN ? 'Over ' + STALE_MIN + ' minutes since the last refresh. GitHub may be skipping scheduled runs, or ESPN failed (see the Actions tab of the repo).' : '';
+}
+
+// ----- Today -----
+function viewToday() {
+  const d = S.data, cal = d.calendar, out = [];
+  if (d.problems && d.problems.length) out.push(`<div class="banner warn small">${d.problems.map(esc).join('<br>')}</div>`);
+  if (cal.today < cal.start) {
+    out.push(`<div class="banner">The season starts <b>${dayLabel(cal.start)}</b>. Lineup checks begin that day.</div>`);
+  }
+  if (S.changes.length) {
+    out.push(`<h2>Since you last looked <span class="sub">${S.prev ? 'data from ' + esc(whenLabel(S.prev.at)) : ''}</span></h2>`
+      + `<div class="card">${S.changes.map(c => `<div>${c}</div>`).join('')}</div>`);
+  }
+  out.push('<h2>To do</h2>');
+  if (!d.actions.length) out.push('<div class="card muted">Nothing needs doing right now.</div>');
+  for (const a of d.actions) out.push(actionCard(a));
+  out.push(matchupCard());
+  out.push(lineupCard());
+  return out.join('');
+}
+
+const PILL_LABELS = {
+  ir_blocked: ['activate', 'drop'], to_ir: ['to IR'], ir_swap: ['to IR'], stream: ['add', 'drop'],
+  upgrade: ['add', 'drop'], stash: ['add', 'drop if needed'],
+};
+function actionCard(a) {
+  const [l1, l2] = PILL_LABELS[a.kind] || ['', 'drop'];
+  const pills = [];
+  if (a.player) pills.push(pill(a.player, l1));
+  if (a.other) pills.push(pill(a.other, 'activate'));
+  if (a.drop) pills.push(pill(a.drop, l2));
+  for (const id of a.start || []) pills.push(pill(id, 'start'));
+  for (const id of a.sit || []) pills.push(pill(id, 'bench'));
+  return `<div class="card act ${a.level}"><div class="t">${esc(a.title)}</div>`
+    + (a.detail ? `<div class="d">${esc(a.detail)}</div>` : '')
+    + (pills.length ? `<div class="who">${pills.join('')}</div>` : '') + '</div>';
+}
+function pill(id, label) {
+  const p = P(id);
+  if (!p) return '';
+  return `<span class="pill" data-pid="${p.id}">${label ? `<span class="lbl">${esc(label)}</span>` : ''}${esc(p.name)} ${statusChip(p)}</span>`;
+}
+
+function matchupCard() {
+  const m = S.data.matchup;
+  if (!m || !m.me || !m.them) return '';
+  const opp = team(m.opp);
+  const total = (m.me.projected + m.them.projected) || 1;
+  const days = m.me.by_day.map((r, i) => {
+    const t = m.them.by_day[i] || [r[0], 0, 0];
+    return `<tr><td>${dayShort(r[0])}</td><td class="r">${r[2]}</td><td class="r">${n0(r[1])}</td><td class="r">${t[2]}</td><td class="r">${n0(t[1])}</td></tr>`;
+  }).join('');
+  return `<h2>Week ${m.period} <span class="sub">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}</span></h2>
+  <div class="card">
+    <div class="vs">
+      <div class="side"><div class="tm">${esc(abbr(me()))}</div><div class="sc">${n0(m.me.score)}</div><div class="pj">projected ${n0(m.me.projected)}</div></div>
+      <div class="mid">vs</div>
+      <div class="side"><div class="tm">${esc(opp.abbrev)}</div><div class="sc">${n0(m.them.score)}</div><div class="pj">projected ${n0(m.them.projected)}</div></div>
+    </div>
+    <div class="bar-split"><i class="a" style="width:${(100 * m.me.projected / total).toFixed(1)}%"></i><i class="b" style="width:${(100 * m.them.projected / total).toFixed(1)}%"></i></div>
+    <div class="small muted">${esc(opp.name)}. Starts left: ${m.me.starts} for you, ${m.them.starts} for them.
+      Projected from each side's best daily lineup from here on, counting each player's chance of playing.</div>
+    ${days ? `<div class="scroll-x"><table class="tbl" style="margin-top:8px"><thead><tr><th>Day</th><th class="r">Your starts</th><th class="r">Points</th><th class="r">Their starts</th><th class="r">Points</th></tr></thead><tbody>${days}</tbody></table></div>` : ''}
+  </div>`;
+}
+
+function lineupCard() {
+  const L = S.data.lineup;
+  if (!L || L.state !== 'season') return '';
+  const start = new Set(L.start), sit = new Set(L.sit);
+  const rows = [...L.rows].sort(bySlot).map(r => {
+    const p = P(r.id);
+    const game = r.tip ? `${r.home ? 'vs' : '@'} ${r.opp} ${timeLabel(r.tip)}${r.locked ? ' · locked' : ''}` : 'no game';
+    const flag = start.has(r.id) ? ' <span class="chip new">START</span>' : sit.has(r.id) ? ' <span class="chip">BENCH</span>' : '';
+    return row(p, [['exp pts', r.tip && !r.locked ? n1(r.pts) : '–']],
+      { prefix: `<span class="chip slot">${esc(r.slot)}</span> `, meta: esc(game), badge: flag, plain: true });
+  }).join('');
+  const verdict = L.gain >= 0.5 ? `yours ${n1(L.current)}, best ${n1(L.best)}` : 'yours is already the best';
+  return `<h2>Today's lineup <span class="sub">${plural(L.with_games, 'player')} with a game · ${verdict}</span></h2>
+    <div class="rows">${rows}</div>
+    <p class="small muted">As ESPN had it at the last refresh. Lineups lock at each game's tip-off; check ESPN before you rely on this.</p>`;
+}
+
+// ----- Roster -----
+function viewRoster() {
+  const d = S.data;
+  const entries = [...myRoster()].filter(e => P(e.id)).sort((a, b) => bySlot(a, b) || P(b.id).ros.value - P(a.id).ros.value);
+  const ir = entries.filter(e => e.slot === 'IR').length;
+  const rows = entries.map(e => {
+    const p = P(e.id);
+    return row(p, [['ROS', n1(p.ros.fppg)], ['wk G', p.week.games, '', true], ['games', n1(p.ros.games), '', true], ['value', n0(p.ros.value)]],
+      { prefix: `<span class="chip slot${e.slot === 'IR' ? ' ir' : ''}">${esc(e.slot)}</span> `, meta: meta(p) + ' · ' + esc(nextGame(p)),
+        note: injuryNote(p), plain: true });
+  }).join('');
+  const drops = d.drop_order.slice(0, 4).map(id => esc(P(id).name)).join(', ');
+  return `<h2>Your roster <span class="sub">${entries.length} players · IR ${ir}/${d.league.ir_slots}</span></h2>
+    <div class="rows">${rows}</div>
+    <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk G</b>: games left this matchup week.
+    <b>Games</b>: games he is expected to play from here. <b>Value</b>: points above a waiver pickup over the rest of the season, playoff weeks counting 1.5×.
+    Lowest value first: ${drops}.</p>`;
+}
+
+// ----- Waivers -----
+function viewWaivers() {
+  const seg = [['adds', 'Best adds'], ['stash', 'IR stash'], ['streams', 'Streams'], ['trending', 'Trending']]
+    .map(([k, l]) => `<button data-wtab="${k}" class="${S.wtab === k ? 'on' : ''}">${l}</button>`).join('');
+  const pos = ['', 'PG', 'SG', 'SF', 'PF', 'C']
+    .map(k => `<button data-pos="${k}" class="${S.pos === k ? 'on' : ''}">${k || 'All'}</button>`).join('');
+  return `<div class="toolbar"><div class="seg">${seg}</div></div>
+    <div class="toolbar"><div class="seg">${pos}</div>
+      <label class="check"><input type="checkbox" id="instant" ${S.instant ? 'checked' : ''}> Free agents only (no waivers)</label>
+      <input type="search" id="q" placeholder="Search players or teams" value="${esc(S.q)}" autocomplete="off" spellcheck="false"></div>
+    <div id="wlist">${waiverList()}</div>`;
+}
+
+function passes(p) {
+  if (S.pos && !p.pos.includes(S.pos)) return false;
+  if (S.instant && p.fa !== 'FREEAGENT') return false;
+  if (S.q) {
+    const q = S.q.toLowerCase();
+    if (!p.name.toLowerCase().includes(q) && p.team.toLowerCase() !== q) return false;
+  }
+  return true;
+}
+function freeAgents() { return Object.values(S.data.players).filter(p => !p.owner); }
+
+function waiverList() {
+  const d = S.data;
+  const dropId = d.upgrades.drop;
+  const drop = dropId ? P(dropId) : null;
+  const floor = drop ? drop.ros.value : 0;
+  const waiverNote = d.waivers.all_on_waivers
+    ? `<div class="banner small">Every free agent is on waivers until <b>${esc(d.waivers.clears_label)}</b>; claims then process in waiver order, and you are #${d.waivers.my_rank} of ${d.league.size}.</div>` : '';
+  if (S.wtab === 'adds') {
+    const list = freeAgents().filter(p => !p.ros.out && passes(p)).sort((a, b) => b.ros.value - a.ros.value).slice(0, 60);
+    return waiverNote + `<p class="lead small">Rest-of-season value against your weakest player${drop ? `, <b>${esc(drop.name)}</b> (value ${n0(floor)})` : ''}.
+      Replacement level is ${n1(d.replacement)} points per game.</p>
+      <div class="rows">${list.map(p => row(p, [['ROS', n1(p.ros.fppg)], ['wk G', p.week.games, '', true], ['games', n1(p.ros.games), '', true],
+        ['value', n0(p.ros.value)], ['vs drop', signed(p.ros.value - floor), p.ros.value > floor ? 'pos' : 'neg']],
+        { meta: meta(p) + ' · ' + esc(nextGame(p)) + ` · ${n1(p.own)}% owned` })).join('') || '<div class="empty">No one matches.</div>'}</div>`;
+  }
+  if (S.wtab === 'stash') {
+    const list = freeAgents().filter(p => p.status === 'OUT' && !p.ros.season_over && passes(p)).sort((a, b) => b.ros.value - a.ros.value).slice(0, 40);
+    const free = d.stash.free_ir;
+    return waiverNote + `<p class="lead small">Free agents tagged Out, so they can sit in an IR slot, ranked by what they add once back. You have <b>${plural(free, 'free IR slot')}</b>.
+      Holding one costs nothing while he is Out, but ESPN may want a free roster spot for the add itself; a player still in IR after he is healthy blocks all your adds until you activate him.</p>
+      <div class="rows">${list.map(p => row(p, [['back', p.ros.back ? dayShort(p.ros.back) : '?'], ['ROS', n1(p.ros.fppg)], ['games', n1(p.ros.games), '', true], ['value', n0(p.ros.value)]],
+        { meta: meta(p) + ' · ' + esc([p.inj && p.inj.type, p.inj && p.inj.detail].filter(Boolean).join(' ') || 'injury'), note: p.inj && p.inj.short ? esc(clip(p.inj.short, 160)) : '' })).join('') || '<div class="empty">No one matches.</div>'}</div>`;
+  }
+  if (S.wtab === 'streams') {
+    const st = d.streams;
+    if (!st.days.length) return `<div class="empty">No days left in this matchup week.</div>`;
+    const list = st.list.filter(r => passes(P(r.id)));
+    return `<p class="lead small">Best single pickup for the rest of this week (${st.days.map(dayShort).join(', ')}): what he adds to your daily lineups, against
+      the best of your ${3} lowest-valued players to drop. <b>Cost</b> is rest-of-season value given up, if the dropped player is worth more.
+      Only free agents you can add right away are listed.</p>
+      <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
+        { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>`;
+  }
+  // trending
+  const list = freeAgents().filter(p => passes(p) && p.own_chg).sort((a, b) => b.own_chg - a.own_chg).slice(0, 40);
+  return `<p class="lead small">Free agents being added fastest across all ESPN leagues (change in % owned).</p>
+    <div class="rows">${list.map(p => row(p, [['owned', n1(p.own) + '%', '', true], ['change', (p.own_chg > 0 ? '+' : '') + n1(p.own_chg), p.own_chg > 0 ? 'pos' : 'neg'], ['ROS', n1(p.ros.fppg)], ['value', n0(p.ros.value)]],
+      { meta: meta(p) + ' · ' + esc(nextGame(p)) })).join('') || '<div class="empty">No one matches.</div>'}</div>`;
+}
+
+// ----- Injuries -----
+function viewInjuries() {
+  const seg = [['all', 'All'], ['mine', 'Yours'], ['opp', 'Opponent'], ['fa', 'Free agents'], ['league', 'Other teams']]
+    .map(([k, l]) => `<button data-who="${k}" class="${S.who === k ? 'on' : ''}">${l}</button>`).join('');
+  const rows = S.data.injuries.filter(r => S.who === 'all' || r.who === S.who).map(r => {
+    const p = P(r.id);
+    const ben = (r.beneficiaries || []).map(id => esc(P(id).name)).join(', ');
+    const note = [injuryNote(p), ben ? `<span class="muted">On waivers at his positions:</span> ${ben}` : ''].filter(Boolean).join('<br>');
+    return row(p, [['back', p.ros.out ? (p.ros.season_over ? 'season' : p.ros.back ? dayShort(p.ros.back) : '?') : '–'], ['value', n0(p.ros.value)]],
+      { meta: meta(p) + ' · ' + esc(ownerLabel(p)), note });
+  }).join('');
+  return `<div class="toolbar"><div class="seg scroll-x">${seg}</div></div>
+    <p class="lead small">Everyone hurt whom a team holds or might add, from ESPN's injury report. Return dates are ESPN's estimates; long layoffs often run later.</p>
+    <div class="rows">${rows || '<div class="empty">No injuries here.</div>'}</div>`;
+}
+
+// ----- League -----
+function viewLeague() {
+  const d = S.data, lg = d.league;
+  const teams = Object.values(lg.teams).sort((a, b) => (b.record.w - a.record.w) || (b.record.pf - a.record.pf));
+  const standings = teams.map((t, i) => `<tr class="${t.id === me() ? 'mine' : ''}"><td>${i + 1}</td><td><b>${esc(t.abbrev)}</b> <span class="muted">${esc(t.name)}</span></td>
+    <td class="r">${t.record.w}-${t.record.l}${t.record.t ? '-' + t.record.t : ''}</td><td class="r">${n0(t.record.pf)}</td><td class="r">${n0(t.record.pa)}</td><td class="r">${t.waiver_rank || '–'}</td></tr>`).join('');
+  const week = d.calendar.week;
+  const games = lg.matchups.filter(m => week != null && m.period === week + 1).map(m =>
+    `<tr class="${[m.home, m.away].includes(me()) ? 'mine' : ''}"><td>${esc(abbr(m.home))}</td><td class="r">${n0(m.home_pts)}</td><td class="r">${n0(m.away_pts)}</td><td>${esc(abbr(m.away))}</td></tr>`).join('');
+  const tx = d.transactions.map(t => {
+    const what = [];
+    if (t.adds.length) what.push('added ' + t.adds.map(id => esc((P(id) || { name: '#' + id }).name)).join(', '));
+    if (t.drops.length) what.push('dropped ' + t.drops.map(id => esc((P(id) || { name: '#' + id }).name)).join(', '));
+    if (t.trade.length) what.push('trade: ' + t.trade.map(([id, f, to]) => esc((P(id) || { name: '#' + id }).name) + ' to ' + esc(abbr(to))).join(', '));
+    return `<tr class="${t.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(t.team))}</b> ${what.join('; ')}</td></tr>`;
+  }).join('');
+  return `<h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r">PF</th><th class="r">PA</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
+    ${games ? `<h2>This week</h2><div class="card scroll-x"><table class="tbl"><tbody>${games}</tbody></table></div>` : ''}
+    <h2>Recent moves <span class="sub">last four days</span></h2><div class="card scroll-x">${tx ? `<table class="tbl"><tbody>${tx}</tbody></table>` : '<div class="muted">No adds, drops or trades yet.</div>'}</div>
+    <p class="small muted" style="margin-top:20px">Values start from the draft board (${esc(d.model.priors_from || '?')}) and move toward each player's actual scoring as games come in. Refreshed every 20 minutes from ESPN.
+    <a href="#" id="lock-now">Forget the passphrase on this device</a></p>`;
+}
+
+// ----- player card -----
+function openPlayer(id) {
+  const p = P(id);
+  if (!p) return;
+  const r = p.ros, i = p.inj;
+  const statRows = [['This season', 'season'], ['Last 7 days', 'l7'], ['Last 15 days', 'l15'], ['Last 30 days', 'l30'], ['Last season', 'last'], ['ESPN projection', 'proj']]
+    .filter(([, k]) => p.stats[k]).map(([l, k]) => { const s = p.stats[k]; return `<tr><td>${l}</td><td class="r">${s[0]}</td><td class="r">${n1(s[1])}</td><td class="r">${n1(s[2])}</td></tr>`; }).join('');
+  const start = S.data.calendar.start;
+  const recent = (p.recent || []).filter(g => g[0] >= 1).map(g => {
+    const day = new Date(isoDate(start).getTime() + (g[0] - 1) * 86400000).toISOString().slice(0, 10);
+    return `<tr><td>${dayShort(day)}</td><td class="r">${g[2]}</td><td class="r">${n1(g[1])}</td></tr>`;
+  }).join('');
+  const sched = (p.next || []).map(([d, opp, home, tip]) => `<tr><td>${dayShort(d)}</td><td>${home ? 'vs' : '@'} ${esc(opp)}</td><td>${timeLabel(tip)}</td><td class="r">${p.odds && p.odds[d] != null ? Math.round(100 * p.odds[d]) + '%' : ''}</td></tr>`).join('');
+  const news = (p.news || []).map(n => `<div class="news"><div class="when">${esc(n.at ? whenLabel(Date.parse(n.at) / 1000) + ' · ' + ago(Date.parse(n.at) / 1000) : '')}${n.kind === 'article' ? ' · ESPN article' : ''}</div>
+    <div class="hl">${esc(n.headline)}</div>${n.story ? `<div class="st">${esc(n.story)}</div>` : ''}</div>`).join('');
+  const prior = r.prior_weight < 1
+    ? `${n1(r.prior)} from the ${esc(r.prior_from)}, blended with ${p.stats.season ? n1(p.stats.season[2]) + ' over ' + plural(p.stats.season[0], 'game') : 'this season'} (${Math.round(100 * (1 - r.prior_weight))}% weight on this season)`
+    : `${n1(r.prior)} from the ${esc(r.prior_from)} (no games yet this season)`;
+  $('#drawer').innerHTML = `<button class="close" id="drawer-close" aria-label="Close">×</button>
+    <h3>${esc(p.name)} ${statusChip(p)}</h3>
+    <div class="muted">${esc(p.team)} · ${esc(p.pos.join('/'))} · ${esc(ownerLabel(p))}${p.owner ? '' : (p.fa === 'WAIVERS' && p.waiver_until ? ' · on waivers until ' + esc(whenLabel(p.waiver_until)) : ' · can be added now')} · ${n1(p.own)}% owned on ESPN</div>
+    ${p.note ? `<div class="banner small" style="margin-top:10px">${esc(p.note)}</div>` : ''}
+    ${i || p.status !== 'ACTIVE' ? `<div class="sec"><div class="h">Injury</div><dl class="kv">
+      <dt>ESPN tag</dt><dd>${esc(p.status.replace(/_/g, ' ').toLowerCase())}${p.status === 'OUT' ? ' (can go in an IR slot)' : ''}</dd>
+      ${i ? `<dt>Report</dt><dd>${esc([i.status, i.side, i.type, i.detail].filter(Boolean).join(' · '))}</dd>
+      <dt>Expected back</dt><dd>${i.return ? esc(dayLabel(i.return)) + ' (ESPN estimate)' : '–'}</dd>
+      <dt>Updated</dt><dd>${i.updated ? esc(whenLabel(Date.parse(i.updated) / 1000)) : '–'}</dd>` : ''}</dl>
+      ${i && i.short ? `<p class="small">${esc(i.short)}</p>` : ''}${i && i.long && i.long !== i.short ? `<p class="small muted">${esc(i.long)}</p>` : ''}</div>` : ''}
+    <div class="sec"><div class="h">Rest of season</div><dl class="kv">
+      <dt>Per game</dt><dd><b>${n1(r.fppg)}</b> · ${prior}</dd>
+      <dt>Games</dt><dd>${n1(r.games)} expected of ${r.team_games} left${r.absent ? ` · ${n1(r.absent)} missed while Out` : ''} · ${n1(r.playoff_games)} in the playoff weeks</dd>
+      <dt>Value</dt><dd><b>${n0(r.value)}</b> points above a waiver pickup${r.bar ? ` (break-even ${n1(r.bar)} per game)` : ''}</dd>
+      <dt>This week</dt><dd>${plural(p.week.games, 'game')}, ${n1(p.week.points)} expected points</dd></dl></div>
+    ${sched ? `<div class="sec"><div class="h">Next games</div><table class="tbl"><thead><tr><th>Day</th><th>Game</th><th>Tip</th><th class="r">Plays</th></tr></thead><tbody>${sched}</tbody></table></div>` : ''}
+    ${statRows ? `<div class="sec"><div class="h">Fantasy points</div><table class="tbl"><thead><tr><th></th><th class="r">GP</th><th class="r">Min</th><th class="r">Per game</th></tr></thead><tbody>${statRows}</tbody></table></div>` : ''}
+    ${recent ? `<div class="sec"><div class="h">Latest games</div><table class="tbl"><thead><tr><th>Day</th><th class="r">Min</th><th class="r">Points</th></tr></thead><tbody>${recent}</tbody></table></div>` : ''}
+    ${news ? `<div class="sec"><div class="h">News</div>${news}</div>` : ''}`;
+  $('#drawer').hidden = false;
+  $('#scrim').hidden = false;
+  $('#drawer').scrollTop = 0;
+  $('#drawer-close').focus();
+}
+function closeDrawer() { $('#drawer').hidden = true; $('#scrim').hidden = true; }
+
+// ---------- what changed since the last visit ----------
+function computeChanges() {
+  const d = S.data;
+  const watch = new Set(myRoster().map(e => e.id));
+  for (const p of freeAgents().sort((a, b) => b.ros.value - a.ros.value).slice(0, 40)) watch.add(p.id);
+  for (const r of d.stash.list) watch.add(r.id);
+  const snap = {};
+  for (const id of watch) { const p = P(id); if (p) snap[id] = [p.status, p.owner]; }
+  const prev = S.prev, out = [];
+  const label = s => ({ ACTIVE: 'healthy', DAY_TO_DAY: 'day-to-day', OUT: 'Out', SUSPENSION: 'suspended' }[s] || s);
+  if (prev && prev.snap) {
+    for (const [id, [status, owner]] of Object.entries(snap)) {
+      const was = prev.snap[id], p = P(id);
+      if (!was) continue;
+      const mine = p.owner === me() ? ' <span class="muted">(yours)</span>' : '';
+      if (was[0] !== status) out.push(`<b>${esc(p.name)}</b>${mine}: ${label(was[0])} → <b>${label(status)}</b>`);
+      if (was[1] === 0 && owner && owner !== me()) out.push(`<b>${esc(p.name)}</b> was picked up by ${esc(abbr(owner))}`);
+    }
+  }
+  S.changes = out;
+  setItem('hq.seen', JSON.stringify({ at: d.generated, snap }));
+}
+
+// ---------- loading ----------
+async function fetchData() {
+  if (IS_LOCAL) {
+    try {
+      const r = await fetch('data.json?t=' + Date.now(), { cache: 'no-store' });
+      if (r.ok) return await r.json();
+    } catch (e) { /* fall through to the encrypted copy */ }
+  }
+  if (!S.key) { const e = new Error('no passphrase'); e.code = 'nokey'; throw e; }
+  const r = await fetch('data.enc?t=' + Date.now(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('could not load data.enc (HTTP ' + r.status + ')');
+  return JSON.parse(await hqDecrypt(await r.arrayBuffer(), S.key));
+}
+
+let loading = false;
+async function refresh(first) {
+  if (loading) return;
+  loading = true;
+  $('#btn-reload').classList.add('spin');
+  try {
+    const d = await fetchData();
+    const changed = !S.data || d.generated !== S.data.generated;
+    S.data = d;
+    if (changed) {
+      if (first) S.prev = getJSON('hq.seen');
+      computeChanges();
+      showApp();
+      render();
+    } else {
+      freshness();
+    }
+  } catch (e) {
+    if (e.code === 'nokey' || e.code === 'badkey') {
+      showLock(e.code === 'badkey' ? 'That passphrase did not open the data.' : '');
+    } else if (!S.data) {
+      $('#view').innerHTML = `<div class="banner bad">Could not load the data: ${esc(e.message)}. Try again in a minute.</div>`;
+    }
+  } finally {
+    loading = false;
+    $('#btn-reload').classList.remove('spin');
+  }
+}
+
+function showLock(msg) {
+  S.data = null;
+  $('#lock').hidden = false;
+  $('#view').innerHTML = '';
+  $('#tabs').hidden = true;
+  $('#btn-reload').hidden = true;
+  $('#lock-error').hidden = !msg;
+  $('#lock-error').textContent = msg || '';
+  $('#lock-input').focus();
+}
+function showApp() {
+  $('#lock').hidden = true;
+  $('#tabs').hidden = false;
+  $('#btn-reload').hidden = false;
+}
+
+function boot() {
+  if (location.hash.startsWith('#k=')) {
+    S.key = decodeURIComponent(location.hash.slice(3));
+    setItem('hq.key', S.key);
+    history.replaceState(null, '', location.pathname + location.search);
+  } else {
+    S.key = getItem('hq.key');
+  }
+  S.tab = getItem('hq.tab') || 'today';
+
+  $('#tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]');
+    if (!b) return;
+    S.tab = b.dataset.tab;
+    setItem('hq.tab', S.tab);
+    render();
+    window.scrollTo(0, 0);
+  });
+  $('#btn-reload').addEventListener('click', () => refresh(false));
+  $('#view').addEventListener('click', e => {
+    const t = e.target.closest('[data-wtab],[data-pos],[data-who],[data-pid],#lock-now');
+    if (!t) return;
+    if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
+    if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
+    if (t.dataset.pos != null) { S.pos = t.dataset.pos; render(); return; }
+    if (t.dataset.who != null) { S.who = t.dataset.who; render(); return; }
+    if (t.dataset.pid) openPlayer(t.dataset.pid);
+  });
+  $('#view').addEventListener('input', e => {
+    if (e.target.id === 'q') { S.q = e.target.value.trim(); $('#wlist').innerHTML = waiverList(); }
+  });
+  $('#view').addEventListener('change', e => {
+    if (e.target.id === 'instant') { S.instant = e.target.checked; $('#wlist').innerHTML = waiverList(); }
+  });
+  $('#drawer').addEventListener('click', e => { if (e.target.id === 'drawer-close') closeDrawer(); });
+  $('#scrim').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+  $('#lock-form').addEventListener('submit', e => {
+    e.preventDefault();
+    S.key = $('#lock-input').value.trim();
+    if ($('#lock-remember').checked) setItem('hq.key', S.key);
+    $('#lock-input').value = '';
+    refresh(true);
+  });
+  refresh(true);
+  setInterval(() => refresh(false), 5 * 60 * 1000);
+  setInterval(() => { if (S.data) freshness(); }, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
+}
+
+boot();

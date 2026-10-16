@@ -1,0 +1,11 @@
+{
+  "_how_this_works": [
+    "In-season notes the refresh layers on top of ESPN. Keyed by player name; every field is optional.",
+    "out_until: YYYY-MM-DD you expect him back (beats ESPN's estimate while he is Out).",
+    "games_rate: multiplier on his share of games played (0.9 = misses an extra 10%).",
+    "fppg_delta: points per game to add to (or take off) his rest-of-season projection.",
+    "note: text shown on his card.",
+    "This file is public in the GitHub repo. Commit and push to apply it; the next refresh picks it up."
+  ],
+  "players": {}
+}

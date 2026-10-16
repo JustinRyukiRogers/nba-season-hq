@@ -1,0 +1,4952 @@
+{
+"_about": "Draft-night board (2026-10-15 22:09), frozen 2026-10-16. fppg: the board's preseason per-game projection. espn_gp and flags rebuild durability; absences come from the live injury report.",
+"board_generated": "2026-10-15 22:09",
+"fallback_ratio": 0.919,
+"default_sigma": 5.37,
+"calibration": {
+"games": {
+"terms": [
+"const",
+"projected_games",
+"new_team",
+"under_50_games_last_year",
+"projected_games_below_66"
+],
+"coef": [
+33.784156641404564,
+0.4024652902539141,
+-3.093380568109633,
+-3.8260472847554285,
+-1.2898735569842399
+],
+"n": 1000,
+"r2": 0.09015050312592265,
+"mean_projected": 71.416,
+"mean_actual": 60.604,
+"p_under_50": {
+"inj_return": 0.3351063829787234,
+"other": 0.1958128078817734
+}
+}
+},
+"players": {
+"3112335": {
+"name": "Nikola Jokic",
+"team": "DEN",
+"fppg": 65.05,
+"sigma": 4.8,
+"mpg": 35.8,
+"espn_gp": 72.0,
+"espn_fppg": 67.2,
+"flags": [
+"old"
+],
+"rank": 1,
+"value": 2448.1
+},
+"3945274": {
+"name": "Luka Doncic",
+"team": "LAL",
+"fppg": 57.84,
+"sigma": 4.8,
+"mpg": 36.5,
+"espn_gp": 68.0,
+"espn_fppg": 60.6,
+"flags": [],
+"rank": 2,
+"value": 1955.7
+},
+"4278073": {
+"name": "Shai Gilgeous-Alexander",
+"team": "OKC",
+"fppg": 54.69,
+"sigma": 4.8,
+"mpg": 33.9,
+"espn_gp": 76.0,
+"espn_fppg": 56.8,
+"flags": [
+"old"
+],
+"rank": 3,
+"value": 1906.4
+},
+"5104157": {
+"name": "Victor Wembanyama",
+"team": "SAS",
+"fppg": 56.89,
+"sigma": 5.37,
+"mpg": 32.3,
+"espn_gp": 67.0,
+"espn_fppg": 60.5,
+"flags": [
+"young"
+],
+"rank": 4,
+"value": 1858.3
+},
+"4432166": {
+"name": "Cade Cunningham",
+"team": "DET",
+"fppg": 50.04,
+"sigma": 4.8,
+"mpg": 34.9,
+"espn_gp": 69.0,
+"espn_fppg": 50.4,
+"flags": [],
+"rank": 5,
+"value": 1495.2
+},
+"4701230": {
+"name": "Jalen Johnson",
+"team": "ATL",
+"fppg": 47.92,
+"sigma": 4.8,
+"mpg": 36.6,
+"espn_gp": 72.0,
+"espn_fppg": 50.0,
+"flags": [],
+"rank": 6,
+"value": 1424.0
+},
+"4431678": {
+"name": "Tyrese Maxey",
+"team": "PHI",
+"fppg": 46.13,
+"sigma": 4.8,
+"mpg": 34.7,
+"espn_gp": 71.0,
+"espn_fppg": 45.1,
+"flags": [],
+"rank": 7,
+"value": 1317.0
+},
+"4594268": {
+"name": "Anthony Edwards",
+"team": "MIN",
+"fppg": 45.77,
+"sigma": 4.8,
+"mpg": 35.8,
+"espn_gp": 72.0,
+"espn_fppg": 47.2,
+"flags": [],
+"rank": 8,
+"value": 1267.5
+},
+"3032977": {
+"name": "Giannis Antetokounmpo",
+"team": "MIA",
+"fppg": 49.76,
+"sigma": 5.61,
+"mpg": 33.4,
+"espn_gp": 67.0,
+"espn_fppg": 57.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 9,
+"value": 1201.0
+},
+"4433134": {
+"name": "Scottie Barnes",
+"team": "TOR",
+"fppg": 43.17,
+"sigma": 4.8,
+"mpg": 33.8,
+"espn_gp": 72.0,
+"espn_fppg": 43.7,
+"flags": [],
+"rank": 10,
+"value": 1131.5
+},
+"3908809": {
+"name": "Donovan Mitchell",
+"team": "CLE",
+"fppg": 43.69,
+"sigma": 4.8,
+"mpg": 33.7,
+"espn_gp": 71.0,
+"espn_fppg": 46.5,
+"flags": [
+"old"
+],
+"rank": 11,
+"value": 1123.0
+},
+"4871144": {
+"name": "Alperen Sengun",
+"team": "HOU",
+"fppg": 43.14,
+"sigma": 5.37,
+"mpg": 32.7,
+"espn_gp": 72.0,
+"espn_fppg": 43.0,
+"flags": [
+"young"
+],
+"rank": 12,
+"value": 1122.7
+},
+"4871145": {
+"name": "Josh Giddey",
+"team": "CHI",
+"fppg": 43.81,
+"sigma": 5.37,
+"mpg": 35.6,
+"espn_gp": 68.0,
+"espn_fppg": 46.2,
+"flags": [
+"young"
+],
+"rank": 13,
+"value": 1104.4
+},
+"5041939": {
+"name": "Cooper Flagg",
+"team": "DAL",
+"fppg": 42.45,
+"sigma": 5.37,
+"mpg": 35.3,
+"espn_gp": 72.0,
+"espn_fppg": 45.4,
+"flags": [
+"young"
+],
+"rank": 14,
+"value": 1080.4
+},
+"3936299": {
+"name": "Jamal Murray",
+"team": "DEN",
+"fppg": 42.94,
+"sigma": 4.8,
+"mpg": 35.2,
+"espn_gp": 69.0,
+"espn_fppg": 43.9,
+"flags": [
+"old"
+],
+"rank": 15,
+"value": 1071.3
+},
+"4065648": {
+"name": "Jayson Tatum",
+"team": "BOS",
+"fppg": 44.11,
+"sigma": 4.8,
+"mpg": 36.2,
+"espn_gp": 70.0,
+"espn_fppg": 48.1,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 16,
+"value": 1053.8
+},
+"3202": {
+"name": "Kevin Durant",
+"team": "HOU",
+"fppg": 41.62,
+"sigma": 4.8,
+"mpg": 34.9,
+"espn_gp": 72.0,
+"espn_fppg": 42.9,
+"flags": [
+"old"
+],
+"rank": 17,
+"value": 1029.6
+},
+"3992": {
+"name": "James Harden",
+"team": "CLE",
+"fppg": 41.42,
+"sigma": 4.8,
+"mpg": 33.6,
+"espn_gp": 73.0,
+"espn_fppg": 42.1,
+"flags": [
+"old"
+],
+"rank": 18,
+"value": 1009.1
+},
+"3934672": {
+"name": "Jalen Brunson",
+"team": "NYK",
+"fppg": 41.45,
+"sigma": 4.8,
+"mpg": 35.4,
+"espn_gp": 72.0,
+"espn_fppg": 43.8,
+"flags": [
+"old"
+],
+"rank": 19,
+"value": 1006.5
+},
+"4684740": {
+"name": "Amen Thompson",
+"team": "HOU",
+"fppg": 40.08,
+"sigma": 5.37,
+"mpg": 36.3,
+"espn_gp": 78.0,
+"espn_fppg": 40.0,
+"flags": [
+"young"
+],
+"rank": 20,
+"value": 998.0
+},
+"3136195": {
+"name": "Karl-Anthony Towns",
+"team": "NYK",
+"fppg": 41.46,
+"sigma": 4.8,
+"mpg": 32.7,
+"espn_gp": 70.0,
+"espn_fppg": 44.1,
+"flags": [
+"old"
+],
+"rank": 21,
+"value": 987.6
+},
+"4432158": {
+"name": "Evan Mobley",
+"team": "CLE",
+"fppg": 42.13,
+"sigma": 4.8,
+"mpg": 33.1,
+"espn_gp": 66.0,
+"espn_fppg": 43.3,
+"flags": [],
+"rank": 22,
+"value": 977.0
+},
+"3136193": {
+"name": "Devin Booker",
+"team": "PHO",
+"fppg": 39.73,
+"sigma": 4.8,
+"mpg": 35.8,
+"espn_gp": 72.0,
+"espn_fppg": 43.2,
+"flags": [
+"old"
+],
+"rank": 23,
+"value": 925.4
+},
+"4396993": {
+"name": "Tyrese Haliburton",
+"team": "IND",
+"fppg": 44.79,
+"sigma": 4.8,
+"mpg": 32.8,
+"espn_gp": 64.0,
+"espn_fppg": 48.6,
+"flags": [
+"inj_return"
+],
+"rank": 24,
+"value": 924.0
+},
+"4433621": {
+"name": "Jalen Duren",
+"team": "DET",
+"fppg": 39.97,
+"sigma": 5.37,
+"mpg": 30.8,
+"espn_gp": 72.0,
+"espn_fppg": 42.2,
+"flags": [
+"young"
+],
+"rank": 25,
+"value": 923.0
+},
+"4432573": {
+"name": "Paolo Banchero",
+"team": "ORL",
+"fppg": 39.37,
+"sigma": 5.37,
+"mpg": 35.1,
+"espn_gp": 69.0,
+"espn_fppg": 39.0,
+"flags": [
+"young"
+],
+"rank": 26,
+"value": 869.3
+},
+"4066457": {
+"name": "Austin Reaves",
+"team": "LAL",
+"fppg": 39.66,
+"sigma": 4.8,
+"mpg": 36.4,
+"espn_gp": 67.0,
+"espn_fppg": 43.3,
+"flags": [
+"old"
+],
+"rank": 27,
+"value": 860.5
+},
+"4432816": {
+"name": "LaMelo Ball",
+"team": "MIN",
+"fppg": 40.87,
+"sigma": 5.61,
+"mpg": 32.4,
+"espn_gp": 68.0,
+"espn_fppg": 46.4,
+"flags": [
+"new_team"
+],
+"rank": 28,
+"value": 850.9
+},
+"4683021": {
+"name": "Deni Avdija",
+"team": "POR",
+"fppg": 38.65,
+"sigma": 4.8,
+"mpg": 33.7,
+"espn_gp": 72.0,
+"espn_fppg": 40.4,
+"flags": [],
+"rank": 29,
+"value": 848.0
+},
+"3155942": {
+"name": "Domantas Sabonis",
+"team": "SAC",
+"fppg": 40.76,
+"sigma": 4.8,
+"mpg": 34.6,
+"espn_gp": 69.0,
+"espn_fppg": 46.7,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 30,
+"value": 841.3
+},
+"4869342": {
+"name": "Dyson Daniels",
+"team": "ATL",
+"fppg": 37.33,
+"sigma": 5.37,
+"mpg": 32.5,
+"espn_gp": 75.0,
+"espn_fppg": 35.7,
+"flags": [
+"young"
+],
+"rank": 31,
+"value": 801.0
+},
+"3149673": {
+"name": "Pascal Siakam",
+"team": "IND",
+"fppg": 37.73,
+"sigma": 4.8,
+"mpg": 34.5,
+"espn_gp": 74.0,
+"espn_fppg": 41.1,
+"flags": [
+"old"
+],
+"rank": 32,
+"value": 800.6
+},
+"4397688": {
+"name": "Trey Murphy III",
+"team": "NOP",
+"fppg": 37.81,
+"sigma": 4.8,
+"mpg": 33.0,
+"espn_gp": 68.0,
+"espn_fppg": 36.8,
+"flags": [],
+"rank": 33,
+"value": 774.9
+},
+"3975": {
+"name": "Stephen Curry",
+"team": "GSW",
+"fppg": 40.12,
+"sigma": 4.8,
+"mpg": 31.9,
+"espn_gp": 66.0,
+"espn_fppg": 43.0,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 34,
+"value": 774.4
+},
+"4066261": {
+"name": "Bam Adebayo",
+"team": "MIA",
+"fppg": 37.34,
+"sigma": 4.8,
+"mpg": 32.5,
+"espn_gp": 73.0,
+"espn_fppg": 39.6,
+"flags": [
+"old"
+],
+"rank": 35,
+"value": 767.7
+},
+"1966": {
+"name": "LeBron James",
+"team": "PHI",
+"fppg": 40.76,
+"sigma": 5.61,
+"mpg": 31.3,
+"espn_gp": 64.0,
+"espn_fppg": 42.5,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 36,
+"value": 760.6
+},
+"6450": {
+"name": "Kawhi Leonard",
+"team": "TOR",
+"fppg": 41.97,
+"sigma": 5.61,
+"mpg": 32.7,
+"espn_gp": 63.0,
+"espn_fppg": 45.7,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 37,
+"value": 725.2
+},
+"4277905": {
+"name": "Trae Young",
+"team": "WAS",
+"fppg": 38.24,
+"sigma": 4.8,
+"mpg": 34.5,
+"espn_gp": 71.0,
+"espn_fppg": 44.4,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 38,
+"value": 724.3
+},
+"4433255": {
+"name": "Chet Holmgren",
+"team": "OKC",
+"fppg": 38.61,
+"sigma": 5.37,
+"mpg": 28.8,
+"espn_gp": 65.0,
+"espn_fppg": 37.9,
+"flags": [
+"young"
+],
+"rank": 39,
+"value": 711.1
+},
+"3078576": {
+"name": "Derrick White",
+"team": "BOS",
+"fppg": 35.46,
+"sigma": 4.8,
+"mpg": 34.3,
+"espn_gp": 77.0,
+"espn_fppg": 37.0,
+"flags": [
+"old"
+],
+"rank": 40,
+"value": 700.9
+},
+"4396907": {
+"name": "Darius Garland",
+"team": "LAC",
+"fppg": 38.21,
+"sigma": 4.8,
+"mpg": 34.8,
+"espn_gp": 69.0,
+"espn_fppg": 40.4,
+"flags": [
+"inj_return"
+],
+"rank": 41,
+"value": 698.9
+},
+"3917376": {
+"name": "Jaylen Brown",
+"team": "PHI",
+"fppg": 37.02,
+"sigma": 5.61,
+"mpg": 32.7,
+"espn_gp": 71.0,
+"espn_fppg": 38.6,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 42,
+"value": 685.8
+},
+"4395628": {
+"name": "Zion Williamson",
+"team": "NOP",
+"fppg": 37.94,
+"sigma": 4.8,
+"mpg": 30.6,
+"espn_gp": 64.0,
+"espn_fppg": 40.0,
+"flags": [],
+"rank": 43,
+"value": 683.6
+},
+"5124612": {
+"name": "VJ Edgecombe",
+"team": "PHI",
+"fppg": 35.29,
+"sigma": 5.37,
+"mpg": 33.7,
+"espn_gp": 72.0,
+"espn_fppg": 33.7,
+"flags": [
+"young"
+],
+"rank": 44,
+"value": 657.5
+},
+"4433627": {
+"name": "Keyonte George",
+"team": "UTA",
+"fppg": 35.94,
+"sigma": 5.37,
+"mpg": 33.1,
+"espn_gp": 68.0,
+"espn_fppg": 36.8,
+"flags": [
+"young"
+],
+"rank": 45,
+"value": 651.2
+},
+"4593803": {
+"name": "Jalen Williams",
+"team": "OKC",
+"fppg": 38.16,
+"sigma": 4.8,
+"mpg": 32.6,
+"espn_gp": 70.0,
+"espn_fppg": 41.0,
+"flags": [
+"inj_return"
+],
+"rank": 46,
+"value": 644.8
+},
+"4066320": {
+"name": "Desmond Bane",
+"team": "ORL",
+"fppg": 35.2,
+"sigma": 4.8,
+"mpg": 33.6,
+"espn_gp": 72.0,
+"espn_fppg": 38.2,
+"flags": [
+"old"
+],
+"rank": 47,
+"value": 642.3
+},
+"4278104": {
+"name": "Michael Porter Jr.",
+"team": "BRK",
+"fppg": 35.61,
+"sigma": 4.8,
+"mpg": 33.3,
+"espn_gp": 69.0,
+"espn_fppg": 38.9,
+"flags": [
+"old"
+],
+"rank": 48,
+"value": 631.0
+},
+"4433287": {
+"name": "Brandon Miller",
+"team": "CHO",
+"fppg": 35.42,
+"sigma": 5.37,
+"mpg": 33.7,
+"espn_gp": 68.0,
+"espn_fppg": 37.4,
+"flags": [
+"young"
+],
+"rank": 49,
+"value": 617.1
+},
+"4066259": {
+"name": "De'Aaron Fox",
+"team": "SAS",
+"fppg": 35.03,
+"sigma": 4.8,
+"mpg": 30.9,
+"espn_gp": 71.0,
+"espn_fppg": 38.2,
+"flags": [
+"old"
+],
+"rank": 50,
+"value": 611.9
+},
+"4431680": {
+"name": "Onyeka Okongwu",
+"team": "ATL",
+"fppg": 34.42,
+"sigma": 4.8,
+"mpg": 30.5,
+"espn_gp": 72.0,
+"espn_fppg": 34.8,
+"flags": [],
+"rank": 51,
+"value": 595.1
+},
+"6583": {
+"name": "Anthony Davis",
+"team": "WAS",
+"fppg": 42.18,
+"sigma": 5.61,
+"mpg": 32.2,
+"espn_gp": 61.0,
+"espn_fppg": 49.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 52,
+"value": 576.1
+},
+"4566434": {
+"name": "Franz Wagner",
+"team": "ORL",
+"fppg": 36.06,
+"sigma": 4.8,
+"mpg": 33.8,
+"espn_gp": 66.0,
+"espn_fppg": 38.6,
+"flags": [
+"inj_return"
+],
+"rank": 53,
+"value": 560.6
+},
+"4845367": {
+"name": "Stephon Castle",
+"team": "SAS",
+"fppg": 33.65,
+"sigma": 5.37,
+"mpg": 32.4,
+"espn_gp": 72.0,
+"espn_fppg": 36.9,
+"flags": [
+"young"
+],
+"rank": 54,
+"value": 541.8
+},
+"4395724": {
+"name": "Immanuel Quickley",
+"team": "TOR",
+"fppg": 34.81,
+"sigma": 4.8,
+"mpg": 31.2,
+"espn_gp": 65.0,
+"espn_fppg": 34.9,
+"flags": [],
+"rank": 55,
+"value": 535.9
+},
+"4066328": {
+"name": "Jarrett Allen",
+"team": "CLE",
+"fppg": 33.48,
+"sigma": 4.8,
+"mpg": 30.0,
+"espn_gp": 71.0,
+"espn_fppg": 36.9,
+"flags": [
+"old"
+],
+"rank": 56,
+"value": 518.0
+},
+"5105565": {
+"name": "Donovan Clingan",
+"team": "POR",
+"fppg": 32.69,
+"sigma": 5.37,
+"mpg": 25.9,
+"espn_gp": 73.0,
+"espn_fppg": 33.9,
+"flags": [
+"young"
+],
+"rank": 57,
+"value": 500.6
+},
+"5095151": {
+"name": "Caleb Wilson",
+"team": "CHI",
+"fppg": 32.82,
+"sigma": 6.52,
+"mpg": 32.1,
+"espn_gp": 71.0,
+"espn_fppg": 34.9,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 58,
+"value": 498.6
+},
+"3147657": {
+"name": "Mikal Bridges",
+"team": "NYK",
+"fppg": 31.62,
+"sigma": 4.8,
+"mpg": 33.9,
+"espn_gp": 82.0,
+"espn_fppg": 32.8,
+"flags": [
+"old"
+],
+"rank": 59,
+"value": 488.4
+},
+"4395625": {
+"name": "RJ Barrett",
+"team": "TOR",
+"fppg": 33.06,
+"sigma": 4.8,
+"mpg": 30.9,
+"espn_gp": 66.0,
+"espn_fppg": 32.6,
+"flags": [],
+"rank": 60,
+"value": 470.6
+},
+"5041935": {
+"name": "Cameron Boozer",
+"team": "MEM",
+"fppg": 31.83,
+"sigma": 6.52,
+"mpg": 31.9,
+"espn_gp": 72.0,
+"espn_fppg": 34.3,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 61,
+"value": 464.7
+},
+"5061575": {
+"name": "Kon Knueppel",
+"team": "CHO",
+"fppg": 33.53,
+"sigma": 6.18,
+"mpg": 33.8,
+"espn_gp": 78.0,
+"espn_fppg": 35.2,
+"flags": [
+"young"
+],
+"rank": 62,
+"value": 461.1
+},
+"3062679": {
+"name": "Josh Hart",
+"team": "NYK",
+"fppg": 32.69,
+"sigma": 4.8,
+"mpg": 31.9,
+"espn_gp": 68.0,
+"espn_fppg": 33.0,
+"flags": [
+"old"
+],
+"rank": 63,
+"value": 455.8
+},
+"4066336": {
+"name": "Lauri Markkanen",
+"team": "UTA",
+"fppg": 33.71,
+"sigma": 4.8,
+"mpg": 33.8,
+"espn_gp": 69.0,
+"espn_fppg": 38.7,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 64,
+"value": 454.9
+},
+"3907497": {
+"name": "Dejounte Murray",
+"team": "NOP",
+"fppg": 33.66,
+"sigma": 4.8,
+"mpg": 31.8,
+"espn_gp": 68.0,
+"espn_fppg": 39.0,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 65,
+"value": 452.9
+},
+"4065733": {
+"name": "Ty Jerome",
+"team": "MEM",
+"fppg": 35.22,
+"sigma": 4.8,
+"mpg": 27.4,
+"espn_gp": 64.0,
+"espn_fppg": 39.8,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 66,
+"value": 449.0
+},
+"3032976": {
+"name": "Rudy Gobert",
+"team": "MIN",
+"fppg": 32.06,
+"sigma": 4.8,
+"mpg": 32.4,
+"espn_gp": 72.0,
+"espn_fppg": 34.3,
+"flags": [
+"old"
+],
+"rank": 67,
+"value": 447.2
+},
+"4684742": {
+"name": "Ausar Thompson",
+"team": "DET",
+"fppg": 32.14,
+"sigma": 5.37,
+"mpg": 27.6,
+"espn_gp": 70.0,
+"espn_fppg": 30.8,
+"flags": [
+"young"
+],
+"rank": 68,
+"value": 447.0
+},
+"6442": {
+"name": "Kyrie Irving",
+"team": "DAL",
+"fppg": 39.17,
+"sigma": 4.8,
+"mpg": 34.7,
+"espn_gp": 59.0,
+"espn_fppg": 44.2,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 69,
+"value": 438.7
+},
+"3934719": {
+"name": "OG Anunoby",
+"team": "NYK",
+"fppg": 32.27,
+"sigma": 4.8,
+"mpg": 34.1,
+"espn_gp": 68.0,
+"espn_fppg": 33.1,
+"flags": [
+"old"
+],
+"rank": 70,
+"value": 432.6
+},
+"4709138": {
+"name": "Brandin Podziemski",
+"team": "GSW",
+"fppg": 30.71,
+"sigma": 5.37,
+"mpg": 30.5,
+"espn_gp": 79.0,
+"espn_fppg": 30.8,
+"flags": [
+"young"
+],
+"rank": 71,
+"value": 425.6
+},
+"3064514": {
+"name": "Julius Randle",
+"team": "BRK",
+"fppg": 32.41,
+"sigma": 5.61,
+"mpg": 34.1,
+"espn_gp": 72.0,
+"espn_fppg": 37.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 72,
+"value": 422.4
+},
+"5142718": {
+"name": "AJ Dybantsa",
+"team": "WAS",
+"fppg": 30.86,
+"sigma": 6.52,
+"mpg": 32.3,
+"espn_gp": 72.0,
+"espn_fppg": 32.9,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 73,
+"value": 409.0
+},
+"4395725": {
+"name": "Tyler Herro",
+"team": "MIL",
+"fppg": 34.11,
+"sigma": 5.61,
+"mpg": 34.0,
+"espn_gp": 67.0,
+"espn_fppg": 38.8,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 74,
+"value": 402.1
+},
+"2490149": {
+"name": "CJ McCollum",
+"team": "ATL",
+"fppg": 30.79,
+"sigma": 4.8,
+"mpg": 30.4,
+"espn_gp": 73.0,
+"espn_fppg": 32.4,
+"flags": [
+"old"
+],
+"rank": 75,
+"value": 390.5
+},
+"4278039": {
+"name": "Nickeil Alexander-Walker",
+"team": "ATL",
+"fppg": 30.07,
+"sigma": 4.8,
+"mpg": 31.7,
+"espn_gp": 79.0,
+"espn_fppg": 34.1,
+"flags": [
+"old"
+],
+"rank": 76,
+"value": 387.4
+},
+"4591725": {
+"name": "Ryan Rollins",
+"team": "MIL",
+"fppg": 31.17,
+"sigma": 5.37,
+"mpg": 27.4,
+"espn_gp": 69.0,
+"espn_fppg": 31.9,
+"flags": [
+"young"
+],
+"rank": 77,
+"value": 386.0
+},
+"4017837": {
+"name": "Ivica Zubac",
+"team": "IND",
+"fppg": 32.26,
+"sigma": 4.8,
+"mpg": 31.1,
+"espn_gp": 69.0,
+"espn_fppg": 35.5,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 78,
+"value": 373.9
+},
+"4711294": {
+"name": "Matas Buzelis",
+"team": "CHI",
+"fppg": 30.33,
+"sigma": 5.37,
+"mpg": 30.5,
+"espn_gp": 74.0,
+"espn_fppg": 32.5,
+"flags": [
+"young"
+],
+"rank": 79,
+"value": 371.9
+},
+"4066354": {
+"name": "Payton Pritchard",
+"team": "BOS",
+"fppg": 30.53,
+"sigma": 4.8,
+"mpg": 30.8,
+"espn_gp": 72.0,
+"espn_fppg": 31.6,
+"flags": [
+"old"
+],
+"rank": 80,
+"value": 369.9
+},
+"5142620": {
+"name": "Darius Acuff Jr.",
+"team": "SAC",
+"fppg": 29.85,
+"sigma": 6.52,
+"mpg": 30.9,
+"espn_gp": 73.0,
+"espn_fppg": 30.4,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 81,
+"value": 362.8
+},
+"4431671": {
+"name": "Jaden McDaniels",
+"team": "MIN",
+"fppg": 30.27,
+"sigma": 4.8,
+"mpg": 31.7,
+"espn_gp": 74.0,
+"espn_fppg": 29.7,
+"flags": [],
+"rank": 82,
+"value": 361.2
+},
+"5160992": {
+"name": "Alex Sarr",
+"team": "WAS",
+"fppg": 32.76,
+"sigma": 5.37,
+"mpg": 28.4,
+"espn_gp": 66.0,
+"espn_fppg": 36.6,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 83,
+"value": 359.8
+},
+"4277961": {
+"name": "Jaren Jackson Jr.",
+"team": "UTA",
+"fppg": 34.81,
+"sigma": 4.8,
+"mpg": 31.3,
+"espn_gp": 62.0,
+"espn_fppg": 38.1,
+"flags": [
+"inj_return"
+],
+"rank": 84,
+"value": 357.0
+},
+"6606": {
+"name": "Damian Lillard",
+"team": "POR",
+"fppg": 33.63,
+"sigma": 5.61,
+"mpg": 32.0,
+"espn_gp": 65.0,
+"espn_fppg": 38.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 85,
+"value": 347.5
+},
+"4869780": {
+"name": "Derik Queen",
+"team": "NOP",
+"fppg": 29.38,
+"sigma": 5.37,
+"mpg": 25.9,
+"espn_gp": 76.0,
+"espn_fppg": 30.5,
+"flags": [
+"young"
+],
+"rank": 86,
+"value": 345.0
+},
+"4433136": {
+"name": "Walker Kessler",
+"team": "LAL",
+"fppg": 34.12,
+"sigma": 5.61,
+"mpg": 31.2,
+"espn_gp": 64.0,
+"espn_fppg": 38.6,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 87,
+"value": 337.7
+},
+"3059319": {
+"name": "Andrew Wiggins",
+"team": "MIA",
+"fppg": 30.5,
+"sigma": 4.8,
+"mpg": 30.4,
+"espn_gp": 67.0,
+"espn_fppg": 32.0,
+"flags": [
+"old"
+],
+"rank": 88,
+"value": 332.2
+},
+"4395712": {
+"name": "Andrew Nembhard",
+"team": "IND",
+"fppg": 30.0,
+"sigma": 4.8,
+"mpg": 31.1,
+"espn_gp": 71.0,
+"espn_fppg": 28.2,
+"flags": [],
+"rank": 89,
+"value": 329.2
+},
+"4397002": {
+"name": "Ayo Dosunmu",
+"team": "MIN",
+"fppg": 29.66,
+"sigma": 4.8,
+"mpg": 29.3,
+"espn_gp": 72.0,
+"espn_fppg": 30.4,
+"flags": [],
+"rank": 90,
+"value": 317.5
+},
+"4432639": {
+"name": "Jabari Smith Jr.",
+"team": "HOU",
+"fppg": 29.09,
+"sigma": 5.37,
+"mpg": 32.2,
+"espn_gp": 73.0,
+"espn_fppg": 27.6,
+"flags": [
+"young"
+],
+"rank": 91,
+"value": 307.7
+},
+"5037871": {
+"name": "Dylan Harper",
+"team": "SAS",
+"fppg": 29.2,
+"sigma": 5.37,
+"mpg": 29.2,
+"espn_gp": 72.0,
+"espn_fppg": 32.3,
+"flags": [
+"young"
+],
+"rank": 92,
+"value": 303.8
+},
+"3059318": {
+"name": "Joel Embiid",
+"team": "PHI",
+"fppg": 41.01,
+"sigma": 4.8,
+"mpg": 31.4,
+"espn_gp": 54.0,
+"espn_fppg": 45.4,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 93,
+"value": 303.6
+},
+"4437244": {
+"name": "Jalen Green",
+"team": "PHO",
+"fppg": 30.27,
+"sigma": 5.37,
+"mpg": 32.3,
+"espn_gp": 70.0,
+"espn_fppg": 32.4,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 94,
+"value": 298.8
+},
+"2595516": {
+"name": "Norman Powell",
+"team": "CHI",
+"fppg": 30.07,
+"sigma": 5.61,
+"mpg": 33.4,
+"espn_gp": 69.0,
+"espn_fppg": 36.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 95,
+"value": 290.8
+},
+"4278585": {
+"name": "Collin Gillespie",
+"team": "PHO",
+"fppg": 28.8,
+"sigma": 4.8,
+"mpg": 25.6,
+"espn_gp": 73.0,
+"espn_fppg": 28.5,
+"flags": [],
+"rank": 96,
+"value": 287.1
+},
+"4396971": {
+"name": "Naz Reid",
+"team": "CHO",
+"fppg": 28.94,
+"sigma": 5.61,
+"mpg": 30.9,
+"espn_gp": 76.0,
+"espn_fppg": 35.5,
+"flags": [
+"new_team"
+],
+"rank": 97,
+"value": 278.9
+},
+"4279888": {
+"name": "Ja Morant",
+"team": "POR",
+"fppg": 31.97,
+"sigma": 5.61,
+"mpg": 28.9,
+"espn_gp": 65.0,
+"espn_fppg": 37.5,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 98,
+"value": 276.7
+},
+"4066383": {
+"name": "Miles Bridges",
+"team": "PHO",
+"fppg": 29.26,
+"sigma": 5.61,
+"mpg": 32.4,
+"espn_gp": 71.0,
+"espn_fppg": 33.9,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 99,
+"value": 273.0
+},
+"3978": {
+"name": "DeMar DeRozan",
+"team": "DEN",
+"fppg": 28.64,
+"sigma": 5.61,
+"mpg": 29.1,
+"espn_gp": 77.0,
+"espn_fppg": 29.8,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 100,
+"value": 270.6
+},
+"4397424": {
+"name": "Neemias Queta",
+"team": "BOS",
+"fppg": 28.57,
+"sigma": 4.8,
+"mpg": 23.1,
+"espn_gp": 72.0,
+"espn_fppg": 27.2,
+"flags": [],
+"rank": 101,
+"value": 268.8
+},
+"4432165": {
+"name": "Jalen Suggs",
+"team": "ORL",
+"fppg": 31.17,
+"sigma": 4.8,
+"mpg": 26.6,
+"espn_gp": 62.0,
+"espn_fppg": 29.1,
+"flags": [],
+"rank": 102,
+"value": 261.4
+},
+"6478": {
+"name": "Nikola Vucevic",
+"team": "ORL",
+"fppg": 28.88,
+"sigma": 5.61,
+"mpg": 24.4,
+"espn_gp": 72.0,
+"espn_fppg": 30.2,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 103,
+"value": 260.0
+},
+"4903027": {
+"name": "Cedric Coward",
+"team": "MEM",
+"fppg": 28.37,
+"sigma": 5.37,
+"mpg": 28.1,
+"espn_gp": 69.0,
+"espn_fppg": 29.7,
+"flags": [
+"young"
+],
+"rank": 104,
+"value": 257.8
+},
+"5041955": {
+"name": "Darryn Peterson",
+"team": "UTA",
+"fppg": 27.3,
+"sigma": 6.52,
+"mpg": 30.1,
+"espn_gp": 73.0,
+"espn_fppg": 29.1,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 105,
+"value": 251.8
+},
+"4395651": {
+"name": "Coby White",
+"team": "CHO",
+"fppg": 30.25,
+"sigma": 4.8,
+"mpg": 33.7,
+"espn_gp": 72.0,
+"espn_fppg": 32.9,
+"flags": [],
+"rank": 106,
+"value": 251.5
+},
+"4711272": {
+"name": "Reed Sheppard",
+"team": "HOU",
+"fppg": 27.37,
+"sigma": 5.37,
+"mpg": 25.1,
+"espn_gp": 76.0,
+"espn_fppg": 29.9,
+"flags": [
+"young"
+],
+"rank": 107,
+"value": 242.4
+},
+"5105623": {
+"name": "Kel'el Ware",
+"team": "MIL",
+"fppg": 28.03,
+"sigma": 6.11,
+"mpg": 25.6,
+"espn_gp": 72.0,
+"espn_fppg": 33.8,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 108,
+"value": 230.8
+},
+"5175643": {
+"name": "Egor Demin",
+"team": "BRK",
+"fppg": 27.56,
+"sigma": 5.37,
+"mpg": 31.2,
+"espn_gp": 71.0,
+"espn_fppg": 30.0,
+"flags": [
+"young"
+],
+"rank": 109,
+"value": 225.3
+},
+"4432194": {
+"name": "Day'Ron Sharpe",
+"team": "BRK",
+"fppg": 28.02,
+"sigma": 4.8,
+"mpg": 23.6,
+"espn_gp": 69.0,
+"espn_fppg": 27.0,
+"flags": [],
+"rank": 110,
+"value": 225.1
+},
+"4712849": {
+"name": "Anthony Black",
+"team": "ORL",
+"fppg": 27.6,
+"sigma": 5.37,
+"mpg": 28.0,
+"espn_gp": 69.0,
+"espn_fppg": 28.2,
+"flags": [
+"young"
+],
+"rank": 111,
+"value": 223.1
+},
+"4397140": {
+"name": "Kevin Porter Jr.",
+"team": "MIL",
+"fppg": 29.38,
+"sigma": 4.8,
+"mpg": 25.5,
+"espn_gp": 66.0,
+"espn_fppg": 33.0,
+"flags": [
+"inj_return"
+],
+"rank": 112,
+"value": 221.7
+},
+"4397136": {
+"name": "Saddiq Bey",
+"team": "NOP",
+"fppg": 27.47,
+"sigma": 4.8,
+"mpg": 26.5,
+"espn_gp": 71.0,
+"espn_fppg": 25.9,
+"flags": [],
+"rank": 113,
+"value": 216.2
+},
+"5144091": {
+"name": "Jeremiah Fears",
+"team": "NOP",
+"fppg": 26.41,
+"sigma": 5.37,
+"mpg": 25.7,
+"espn_gp": 77.0,
+"espn_fppg": 27.3,
+"flags": [
+"young"
+],
+"rank": 114,
+"value": 209.9
+},
+"5174563": {
+"name": "Kyshawn George",
+"team": "WAS",
+"fppg": 28.51,
+"sigma": 5.37,
+"mpg": 29.1,
+"espn_gp": 66.0,
+"espn_fppg": 30.2,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 115,
+"value": 200.5
+},
+"4395626": {
+"name": "Tre Jones",
+"team": "CHI",
+"fppg": 27.34,
+"sigma": 4.8,
+"mpg": 21.7,
+"espn_gp": 68.0,
+"espn_fppg": 25.8,
+"flags": [],
+"rank": 116,
+"value": 192.1
+},
+"4278067": {
+"name": "Nic Claxton",
+"team": "CHI",
+"fppg": 28.38,
+"sigma": 5.61,
+"mpg": 27.7,
+"espn_gp": 69.0,
+"espn_fppg": 30.3,
+"flags": [
+"new_team"
+],
+"rank": 117,
+"value": 187.1
+},
+"3133628": {
+"name": "Myles Turner",
+"team": "MIL",
+"fppg": 26.85,
+"sigma": 4.8,
+"mpg": 27.5,
+"espn_gp": 71.0,
+"espn_fppg": 28.4,
+"flags": [
+"old"
+],
+"rank": 118,
+"value": 184.2
+},
+"3995": {
+"name": "Jrue Holiday",
+"team": "POR",
+"fppg": 27.03,
+"sigma": 4.8,
+"mpg": 27.5,
+"espn_gp": 68.0,
+"espn_fppg": 28.1,
+"flags": [
+"old"
+],
+"rank": 119,
+"value": 182.1
+},
+"5254165": {
+"name": "Keaton Wagler",
+"team": "LAC",
+"fppg": 25.72,
+"sigma": 6.52,
+"mpg": 29.2,
+"espn_gp": 70.0,
+"espn_fppg": 24.4,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 120,
+"value": 181.4
+},
+"4873138": {
+"name": "Ace Bailey",
+"team": "UTA",
+"fppg": 26.21,
+"sigma": 5.37,
+"mpg": 28.1,
+"espn_gp": 72.0,
+"espn_fppg": 26.8,
+"flags": [
+"young"
+],
+"rank": 121,
+"value": 178.9
+},
+"3913176": {
+"name": "Brandon Ingram",
+"team": "LAC",
+"fppg": 33.13,
+"sigma": 6.45,
+"mpg": 35.0,
+"espn_gp": 55.0,
+"espn_fppg": 38.5,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 122,
+"value": 178.1
+},
+"4395630": {
+"name": "Devin Vassell",
+"team": "SAS",
+"fppg": 26.84,
+"sigma": 4.8,
+"mpg": 27.6,
+"espn_gp": 69.0,
+"espn_fppg": 26.8,
+"flags": [],
+"rank": 123,
+"value": 176.6
+},
+"4683692": {
+"name": "Cason Wallace",
+"team": "OKC",
+"fppg": 25.71,
+"sigma": 5.37,
+"mpg": 26.4,
+"espn_gp": 76.0,
+"espn_fppg": 24.1,
+"flags": [
+"young"
+],
+"rank": 124,
+"value": 176.2
+},
+"4594327": {
+"name": "Keegan Murray",
+"team": "SAC",
+"fppg": 27.57,
+"sigma": 4.8,
+"mpg": 34.1,
+"espn_gp": 71.0,
+"espn_fppg": 29.3,
+"flags": [
+"inj_return"
+],
+"rank": 125,
+"value": 174.9
+},
+"3134908": {
+"name": "Jakob Poeltl",
+"team": "TOR",
+"fppg": 27.98,
+"sigma": 4.8,
+"mpg": 27.1,
+"espn_gp": 66.0,
+"espn_fppg": 31.7,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 126,
+"value": 170.6
+},
+"4576087": {
+"name": "Peyton Watson",
+"team": "CLE",
+"fppg": 26.22,
+"sigma": 6.11,
+"mpg": 30.3,
+"espn_gp": 71.0,
+"espn_fppg": 29.3,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 127,
+"value": 162.2
+},
+"3908845": {
+"name": "John Collins",
+"team": "DET",
+"fppg": 26.74,
+"sigma": 5.61,
+"mpg": 30.3,
+"espn_gp": 68.0,
+"espn_fppg": 31.8,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 128,
+"value": 158.6
+},
+"4431736": {
+"name": "Toumani Camara",
+"team": "POR",
+"fppg": 25.72,
+"sigma": 4.8,
+"mpg": 29.8,
+"espn_gp": 75.0,
+"espn_fppg": 23.8,
+"flags": [],
+"rank": 129,
+"value": 158.1
+},
+"5175737": {
+"name": "Yaxel Lendeborg",
+"team": "GSW",
+"fppg": 24.86,
+"sigma": 6.52,
+"mpg": 27.7,
+"espn_gp": 71.0,
+"espn_fppg": 23.5,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 130,
+"value": 156.9
+},
+"3138196": {
+"name": "Cameron Johnson",
+"team": "DEN",
+"fppg": 26.36,
+"sigma": 4.8,
+"mpg": 29.2,
+"espn_gp": 68.0,
+"espn_fppg": 26.1,
+"flags": [
+"old"
+],
+"rank": 131,
+"value": 155.9
+},
+"4683766": {
+"name": "Isaiah Collier",
+"team": "UTA",
+"fppg": 25.9,
+"sigma": 5.37,
+"mpg": 22.7,
+"espn_gp": 67.0,
+"espn_fppg": 24.6,
+"flags": [
+"young"
+],
+"rank": 132,
+"value": 150.6
+},
+"4600663": {
+"name": "Zach Edey",
+"team": "MEM",
+"fppg": 29.21,
+"sigma": 5.37,
+"mpg": 26.2,
+"espn_gp": 62.0,
+"espn_fppg": 33.2,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 133,
+"value": 149.7
+},
+"2991230": {
+"name": "Fred VanVleet",
+"team": "HOU",
+"fppg": 28.02,
+"sigma": 4.8,
+"mpg": 30.9,
+"espn_gp": 68.0,
+"espn_fppg": 33.4,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 134,
+"value": 149.4
+},
+"4684793": {
+"name": "Kyle Filipowski",
+"team": "UTA",
+"fppg": 25.04,
+"sigma": 5.37,
+"mpg": 21.4,
+"espn_gp": 73.0,
+"espn_fppg": 24.9,
+"flags": [
+"young"
+],
+"rank": 135,
+"value": 141.8
+},
+"4222252": {
+"name": "Isaiah Hartenstein",
+"team": "OKC",
+"fppg": 28.0,
+"sigma": 4.8,
+"mpg": 25.1,
+"espn_gp": 64.0,
+"espn_fppg": 30.5,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 136,
+"value": 136.2
+},
+"5104155": {
+"name": "Bilal Coulibaly",
+"team": "WAS",
+"fppg": 25.14,
+"sigma": 5.37,
+"mpg": 23.7,
+"espn_gp": 68.0,
+"espn_fppg": 23.0,
+"flags": [
+"young"
+],
+"rank": 137,
+"value": 129.9
+},
+"6589": {
+"name": "Draymond Green",
+"team": "GSW",
+"fppg": 26.6,
+"sigma": 4.8,
+"mpg": 27.6,
+"espn_gp": 64.0,
+"espn_fppg": 28.5,
+"flags": [
+"old"
+],
+"rank": 138,
+"value": 126.9
+},
+"4397014": {
+"name": "Quentin Grimes",
+"team": "LAL",
+"fppg": 24.87,
+"sigma": 5.61,
+"mpg": 30.3,
+"espn_gp": 73.0,
+"espn_fppg": 28.1,
+"flags": [
+"new_team"
+],
+"rank": 139,
+"value": 119.9
+},
+"4432848": {
+"name": "Jaime Jaquez Jr.",
+"team": "MIL",
+"fppg": 24.81,
+"sigma": 5.61,
+"mpg": 27.2,
+"espn_gp": 74.0,
+"espn_fppg": 28.2,
+"flags": [
+"new_team"
+],
+"rank": 140,
+"value": 119.1
+},
+"3155526": {
+"name": "Dillon Brooks",
+"team": "PHO",
+"fppg": 25.08,
+"sigma": 4.8,
+"mpg": 30.8,
+"espn_gp": 69.0,
+"espn_fppg": 26.9,
+"flags": [
+"old"
+],
+"rank": 141,
+"value": 119.0
+},
+"5101761": {
+"name": "Mikel Brown Jr.",
+"team": "BRK",
+"fppg": 23.39,
+"sigma": 6.52,
+"mpg": 30.5,
+"espn_gp": 71.0,
+"espn_fppg": 24.0,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 142,
+"value": 115.8
+},
+"4278049": {
+"name": "Daniel Gafford",
+"team": "DAL",
+"fppg": 25.11,
+"sigma": 4.8,
+"mpg": 21.5,
+"espn_gp": 68.0,
+"espn_fppg": 29.3,
+"flags": [
+"old"
+],
+"rank": 143,
+"value": 115.5
+},
+"4278078": {
+"name": "P.J. Washington",
+"team": "DAL",
+"fppg": 26.15,
+"sigma": 4.8,
+"mpg": 29.4,
+"espn_gp": 64.0,
+"espn_fppg": 26.9,
+"flags": [
+"old"
+],
+"rank": 144,
+"value": 114.1
+},
+"4601023": {
+"name": "Oso Ighodaro",
+"team": "PHO",
+"fppg": 23.51,
+"sigma": 5.37,
+"mpg": 26.4,
+"espn_gp": 79.0,
+"espn_fppg": 25.3,
+"flags": [
+"young"
+],
+"rank": 145,
+"value": 114.0
+},
+"4277847": {
+"name": "Wendell Carter Jr.",
+"team": "ORL",
+"fppg": 24.66,
+"sigma": 4.8,
+"mpg": 25.9,
+"espn_gp": 72.0,
+"espn_fppg": 23.0,
+"flags": [],
+"rank": 146,
+"value": 113.8
+},
+"3064440": {
+"name": "Zach LaVine",
+"team": "SAC",
+"fppg": 28.96,
+"sigma": 4.8,
+"mpg": 32.9,
+"espn_gp": 61.0,
+"espn_fppg": 32.0,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 147,
+"value": 111.1
+},
+"5093267": {
+"name": "Collin Murray-Boyles",
+"team": "TOR",
+"fppg": 24.62,
+"sigma": 5.37,
+"mpg": 22.0,
+"espn_gp": 66.0,
+"espn_fppg": 24.8,
+"flags": [
+"young"
+],
+"rank": 148,
+"value": 109.9
+},
+"4066262": {
+"name": "Malik Monk",
+"team": "SAC",
+"fppg": 24.91,
+"sigma": 4.8,
+"mpg": 25.3,
+"espn_gp": 68.0,
+"espn_fppg": 27.7,
+"flags": [
+"old"
+],
+"rank": 149,
+"value": 108.9
+},
+"4683688": {
+"name": "Dereck Lively II",
+"team": "DAL",
+"fppg": 25.8,
+"sigma": 5.37,
+"mpg": 23.5,
+"espn_gp": 65.0,
+"espn_fppg": 27.4,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 150,
+"value": 100.8
+},
+"3064290": {
+"name": "Aaron Gordon",
+"team": "DEN",
+"fppg": 25.82,
+"sigma": 4.8,
+"mpg": 29.3,
+"espn_gp": 66.0,
+"espn_fppg": 28.9,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 151,
+"value": 100.5
+},
+"4278053": {
+"name": "Davion Mitchell",
+"team": "MIA",
+"fppg": 24.21,
+"sigma": 4.8,
+"mpg": 27.8,
+"espn_gp": 71.0,
+"espn_fppg": 25.5,
+"flags": [
+"old"
+],
+"rank": 152,
+"value": 96.3
+},
+"4433249": {
+"name": "Moussa Diabate",
+"team": "CHO",
+"fppg": 24.12,
+"sigma": 4.8,
+"mpg": 24.5,
+"espn_gp": 70.0,
+"espn_fppg": 24.0,
+"flags": [],
+"rank": 153,
+"value": 92.5
+},
+"4433192": {
+"name": "Tari Eason",
+"team": "HOU",
+"fppg": 24.31,
+"sigma": 4.8,
+"mpg": 24.0,
+"espn_gp": 66.0,
+"espn_fppg": 23.2,
+"flags": [],
+"rank": 154,
+"value": 88.0
+},
+"5107173": {
+"name": "Danny Wolf",
+"team": "BRK",
+"fppg": 23.26,
+"sigma": 5.37,
+"mpg": 23.1,
+"espn_gp": 71.0,
+"espn_fppg": 24.7,
+"flags": [
+"young"
+],
+"rank": 155,
+"value": 86.1
+},
+"4277811": {
+"name": "Collin Sexton",
+"team": "LAL",
+"fppg": 23.81,
+"sigma": 5.61,
+"mpg": 25.4,
+"espn_gp": 70.0,
+"espn_fppg": 28.8,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 156,
+"value": 85.8
+},
+"4683634": {
+"name": "Bennedict Mathurin",
+"team": "NOP",
+"fppg": 23.37,
+"sigma": 6.11,
+"mpg": 28.0,
+"espn_gp": 68.0,
+"espn_fppg": 25.1,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 157,
+"value": 84.3
+},
+"5061589": {
+"name": "Yves Missi",
+"team": "NOP",
+"fppg": 23.42,
+"sigma": 5.37,
+"mpg": 25.1,
+"espn_gp": 67.0,
+"espn_fppg": 24.7,
+"flags": [
+"young"
+],
+"rank": 158,
+"value": 83.9
+},
+"6440": {
+"name": "Tobias Harris",
+"team": "SAS",
+"fppg": 24.41,
+"sigma": 5.61,
+"mpg": 30.5,
+"espn_gp": 71.0,
+"espn_fppg": 30.1,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 159,
+"value": 82.8
+},
+"4431767": {
+"name": "Christian Braun",
+"team": "DEN",
+"fppg": 25.29,
+"sigma": 4.8,
+"mpg": 28.4,
+"espn_gp": 65.0,
+"espn_fppg": 23.1,
+"flags": [
+"inj_return"
+],
+"rank": 160,
+"value": 76.3
+},
+"4845374": {
+"name": "Bub Carrington",
+"team": "WAS",
+"fppg": 21.76,
+"sigma": 5.37,
+"mpg": 24.7,
+"espn_gp": 82.0,
+"espn_fppg": 20.1,
+"flags": [
+"young"
+],
+"rank": 161,
+"value": 75.3
+},
+"4431679": {
+"name": "Precious Achiuwa",
+"team": "SAC",
+"fppg": 23.33,
+"sigma": 4.8,
+"mpg": 23.3,
+"espn_gp": 71.0,
+"espn_fppg": 24.1,
+"flags": [],
+"rank": 162,
+"value": 75.1
+},
+"4351851": {
+"name": "Anfernee Simons",
+"team": "PHI",
+"fppg": 23.55,
+"sigma": 5.61,
+"mpg": 24.7,
+"espn_gp": 66.0,
+"espn_fppg": 23.4,
+"flags": [
+"new_team"
+],
+"rank": 163,
+"value": 72.8
+},
+"4592479": {
+"name": "Julian Champagnie",
+"team": "SAS",
+"fppg": 22.2,
+"sigma": 4.8,
+"mpg": 25.7,
+"espn_gp": 82.0,
+"espn_fppg": 23.3,
+"flags": [],
+"rank": 164,
+"value": 70.5
+},
+"4395723": {
+"name": "Keldon Johnson",
+"team": "SAS",
+"fppg": 22.57,
+"sigma": 4.8,
+"mpg": 23.8,
+"espn_gp": 77.0,
+"espn_fppg": 24.0,
+"flags": [],
+"rank": 165,
+"value": 69.8
+},
+"5105550": {
+"name": "GG Jackson",
+"team": "MEM",
+"fppg": 22.52,
+"sigma": 5.37,
+"mpg": 23.0,
+"espn_gp": 69.0,
+"espn_fppg": 23.3,
+"flags": [
+"young"
+],
+"rank": 166,
+"value": 68.6
+},
+"4873153": {
+"name": "Morez Johnson Jr.",
+"team": "DAL",
+"fppg": 21.03,
+"sigma": 6.52,
+"mpg": 24.9,
+"espn_gp": 71.0,
+"espn_fppg": 23.5,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 167,
+"value": 68.1
+},
+"5149077": {
+"name": "Kingston Flemings",
+"team": "ATL",
+"fppg": 20.91,
+"sigma": 6.52,
+"mpg": 25.0,
+"espn_gp": 71.0,
+"espn_fppg": 22.3,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 168,
+"value": 66.5
+},
+"4432582": {
+"name": "Max Christie",
+"team": "DAL",
+"fppg": 21.7,
+"sigma": 5.37,
+"mpg": 29.0,
+"espn_gp": 77.0,
+"espn_fppg": 21.0,
+"flags": [
+"young"
+],
+"rank": 169,
+"value": 65.8
+},
+"4432241": {
+"name": "Jamal Shead",
+"team": "TOR",
+"fppg": 21.24,
+"sigma": 5.37,
+"mpg": 22.6,
+"espn_gp": 81.0,
+"espn_fppg": 20.7,
+"flags": [
+"young"
+],
+"rank": 170,
+"value": 63.9
+},
+"4278594": {
+"name": "Naji Marshall",
+"team": "DAL",
+"fppg": 22.79,
+"sigma": 4.8,
+"mpg": 23.8,
+"espn_gp": 70.0,
+"espn_fppg": 22.4,
+"flags": [
+"old"
+],
+"rank": 171,
+"value": 62.5
+},
+"3448": {
+"name": "Brook Lopez",
+"team": "LAC",
+"fppg": 22.56,
+"sigma": 4.8,
+"mpg": 24.0,
+"espn_gp": 72.0,
+"espn_fppg": 26.2,
+"flags": [
+"old"
+],
+"rank": 172,
+"value": 60.9
+},
+"4431785": {
+"name": "Scotty Pippen Jr.",
+"team": "MEM",
+"fppg": 25.47,
+"sigma": 4.8,
+"mpg": 23.8,
+"espn_gp": 63.0,
+"espn_fppg": 30.6,
+"flags": [
+"inj_return"
+],
+"rank": 173,
+"value": 60.2
+},
+"4432171": {
+"name": "Moses Moody",
+"team": "GSW",
+"fppg": 23.54,
+"sigma": 6.18,
+"mpg": 24.1,
+"espn_gp": 12.0,
+"espn_fppg": 22.4,
+"flags": [
+"young"
+],
+"rank": 174,
+"value": 58.8
+},
+"4683747": {
+"name": "Jaylon Tyson",
+"team": "CLE",
+"fppg": 24.18,
+"sigma": 5.37,
+"mpg": 25.7,
+"espn_gp": 62.0,
+"espn_fppg": 25.6,
+"flags": [
+"young"
+],
+"rank": 175,
+"value": 58.1
+},
+"2530530": {
+"name": "T.J. McConnell",
+"team": "IND",
+"fppg": 22.51,
+"sigma": 4.8,
+"mpg": 17.4,
+"espn_gp": 70.0,
+"espn_fppg": 24.4,
+"flags": [
+"old"
+],
+"rank": 176,
+"value": 56.4
+},
+"2991070": {
+"name": "Jerami Grant",
+"team": "MEM",
+"fppg": 22.37,
+"sigma": 5.61,
+"mpg": 28.5,
+"espn_gp": 68.0,
+"espn_fppg": 27.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 177,
+"value": 55.4
+},
+"4683678": {
+"name": "Scoot Henderson",
+"team": "POR",
+"fppg": 23.11,
+"sigma": 5.37,
+"mpg": 26.0,
+"espn_gp": 66.0,
+"espn_fppg": 25.4,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 178,
+"value": 55.4
+},
+"5105839": {
+"name": "Brice Sensabaugh",
+"team": "UTA",
+"fppg": 21.48,
+"sigma": 5.37,
+"mpg": 21.1,
+"espn_gp": 72.0,
+"espn_fppg": 20.6,
+"flags": [
+"young"
+],
+"rank": 179,
+"value": 53.9
+},
+"3102530": {
+"name": "Jusuf Nurkic",
+"team": "UTA",
+"fppg": 24.15,
+"sigma": 5.52,
+"mpg": 23.0,
+"espn_gp": 64.0,
+"espn_fppg": 27.6,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 180,
+"value": 53.8
+},
+"3064482": {
+"name": "Bobby Portis",
+"team": "MIA",
+"fppg": 22.95,
+"sigma": 5.61,
+"mpg": 23.8,
+"espn_gp": 65.0,
+"espn_fppg": 26.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 181,
+"value": 52.7
+},
+"5279130": {
+"name": "Nolan Traore",
+"team": "BRK",
+"fppg": 21.53,
+"sigma": 5.37,
+"mpg": 25.0,
+"espn_gp": 71.0,
+"espn_fppg": 21.6,
+"flags": [
+"young"
+],
+"rank": 182,
+"value": 52.5
+},
+"4896372": {
+"name": "Walter Clayton Jr.",
+"team": "MEM",
+"fppg": 21.41,
+"sigma": 5.37,
+"mpg": 25.1,
+"espn_gp": 71.0,
+"espn_fppg": 23.4,
+"flags": [
+"young"
+],
+"rank": 183,
+"value": 51.9
+},
+"5082206": {
+"name": "Brayden Burries",
+"team": "MIL",
+"fppg": 20.01,
+"sigma": 6.52,
+"mpg": 25.8,
+"espn_gp": 71.0,
+"espn_fppg": 22.2,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 184,
+"value": 51.8
+},
+"4592691": {
+"name": "Jake LaRavia",
+"team": "LAL",
+"fppg": 21.59,
+"sigma": 4.8,
+"mpg": 27.9,
+"espn_gp": 77.0,
+"espn_fppg": 23.7,
+"flags": [],
+"rank": 185,
+"value": 51.4
+},
+"4397189": {
+"name": "Jalen Smith",
+"team": "CHI",
+"fppg": 22.54,
+"sigma": 4.8,
+"mpg": 19.9,
+"espn_gp": 66.0,
+"espn_fppg": 22.4,
+"flags": [],
+"rank": 186,
+"value": 50.3
+},
+"4432810": {
+"name": "Isaiah Stewart",
+"team": "MEM",
+"fppg": 20.57,
+"sigma": 6.45,
+"mpg": 23.2,
+"espn_gp": 69.0,
+"espn_fppg": 25.3,
+"flags": [
+"new_team"
+],
+"rank": 187,
+"value": 50.1
+},
+"3133603": {
+"name": "Kelly Oubre Jr.",
+"team": "IND",
+"fppg": 22.1,
+"sigma": 5.61,
+"mpg": 26.1,
+"espn_gp": 67.0,
+"espn_fppg": 23.2,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 188,
+"value": 48.4
+},
+"5238230": {
+"name": "Tre Johnson",
+"team": "WAS",
+"fppg": 21.43,
+"sigma": 5.37,
+"mpg": 25.3,
+"espn_gp": 68.0,
+"espn_fppg": 21.5,
+"flags": [
+"young"
+],
+"rank": 189,
+"value": 47.5
+},
+"4251": {
+"name": "Paul George",
+"team": "BOS",
+"fppg": 31.42,
+"sigma": 5.61,
+"mpg": 32.8,
+"espn_gp": 55.0,
+"espn_fppg": 38.5,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 190,
+"value": 47.3
+},
+"4702384": {
+"name": "Nique Clifford",
+"team": "SAC",
+"fppg": 21.05,
+"sigma": 5.37,
+"mpg": 27.4,
+"espn_gp": 72.0,
+"espn_fppg": 20.8,
+"flags": [
+"young"
+],
+"rank": 191,
+"value": 46.8
+},
+"4432823": {
+"name": "Jaylin Williams",
+"team": "OKC",
+"fppg": 21.43,
+"sigma": 5.37,
+"mpg": 18.5,
+"espn_gp": 67.0,
+"espn_fppg": 20.0,
+"flags": [
+"young"
+],
+"rank": 192,
+"value": 46.4
+},
+"3102531": {
+"name": "Kristaps Porzingis",
+"team": "GSW",
+"fppg": 32.17,
+"sigma": 4.8,
+"mpg": 27.5,
+"espn_gp": 59.0,
+"espn_fppg": 36.9,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 193,
+"value": 45.9
+},
+"4278129": {
+"name": "Deandre Ayton",
+"team": "WAS",
+"fppg": 22.87,
+"sigma": 5.61,
+"mpg": 23.4,
+"espn_gp": 64.0,
+"espn_fppg": 25.3,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 194,
+"value": 45.2
+},
+"4997536": {
+"name": "Gui Santos",
+"team": "GSW",
+"fppg": 21.28,
+"sigma": 5.37,
+"mpg": 22.6,
+"espn_gp": 66.0,
+"espn_fppg": 19.7,
+"flags": [
+"young"
+],
+"rank": 195,
+"value": 42.4
+},
+"4433247": {
+"name": "Jonathan Kuminga",
+"team": "MIN",
+"fppg": 22.03,
+"sigma": 6.11,
+"mpg": 26.8,
+"espn_gp": 67.0,
+"espn_fppg": 26.3,
+"flags": [
+"young",
+"new_team",
+"inj_return"
+],
+"rank": 196,
+"value": 41.9
+},
+"4593125": {
+"name": "Santi Aldama",
+"team": "DAL",
+"fppg": 22.67,
+"sigma": 5.61,
+"mpg": 23.2,
+"espn_gp": 66.0,
+"espn_fppg": 25.0,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 197,
+"value": 41.0
+},
+"5112087": {
+"name": "Jaylen Wells",
+"team": "MEM",
+"fppg": 20.45,
+"sigma": 5.37,
+"mpg": 25.1,
+"espn_gp": 71.0,
+"espn_fppg": 19.3,
+"flags": [
+"young"
+],
+"rank": 198,
+"value": 38.2
+},
+"6430": {
+"name": "Jimmy Butler III",
+"team": "GSW",
+"fppg": 35.33,
+"sigma": 5.52,
+"mpg": 32.2,
+"espn_gp": 39.0,
+"espn_fppg": 38.8,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 199,
+"value": 38.0
+},
+"6580": {
+"name": "Bradley Beal",
+"team": "LAC",
+"fppg": 23.0,
+"sigma": 5.52,
+"mpg": 24.8,
+"espn_gp": 54.0,
+"espn_fppg": 25.6,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 200,
+"value": 37.7
+},
+"4576060": {
+"name": "Ryan Kalkbrenner",
+"team": "CHO",
+"fppg": 21.28,
+"sigma": 4.8,
+"mpg": 22.1,
+"espn_gp": 69.0,
+"espn_fppg": 22.8,
+"flags": [],
+"rank": 201,
+"value": 36.0
+},
+"3157465": {
+"name": "Duncan Robinson",
+"team": "DET",
+"fppg": 20.56,
+"sigma": 4.8,
+"mpg": 26.0,
+"espn_gp": 76.0,
+"espn_fppg": 21.6,
+"flags": [
+"old"
+],
+"rank": 202,
+"value": 34.4
+},
+"3134907": {
+"name": "Kyle Kuzma",
+"team": "MIL",
+"fppg": 21.24,
+"sigma": 4.8,
+"mpg": 25.4,
+"espn_gp": 68.0,
+"espn_fppg": 23.3,
+"flags": [
+"old"
+],
+"rank": 203,
+"value": 34.1
+},
+"4066372": {
+"name": "Kevin Huerter",
+"team": "DET",
+"fppg": 21.06,
+"sigma": 4.8,
+"mpg": 23.2,
+"espn_gp": 69.0,
+"espn_fppg": 22.9,
+"flags": [
+"old"
+],
+"rank": 204,
+"value": 33.2
+},
+"2991139": {
+"name": "Kris Dunn",
+"team": "LAC",
+"fppg": 20.45,
+"sigma": 4.8,
+"mpg": 21.6,
+"espn_gp": 75.0,
+"espn_fppg": 20.0,
+"flags": [
+"old"
+],
+"rank": 205,
+"value": 32.0
+},
+"4066648": {
+"name": "Rui Hachimura",
+"team": "LAC",
+"fppg": 20.17,
+"sigma": 5.61,
+"mpg": 30.5,
+"espn_gp": 71.0,
+"espn_fppg": 24.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 206,
+"value": 30.3
+},
+"4277956": {
+"name": "Jordan Poole",
+"team": "NOP",
+"fppg": 21.93,
+"sigma": 4.8,
+"mpg": 21.4,
+"espn_gp": 66.0,
+"espn_fppg": 22.0,
+"flags": [
+"inj_return"
+],
+"rank": 207,
+"value": 29.9
+},
+"4351852": {
+"name": "Mitchell Robinson",
+"team": "BOS",
+"fppg": 23.05,
+"sigma": 5.61,
+"mpg": 24.4,
+"espn_gp": 61.0,
+"espn_fppg": 30.3,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 208,
+"value": 29.1
+},
+"3936099": {
+"name": "Derrick Jones Jr.",
+"team": "LAC",
+"fppg": 20.78,
+"sigma": 4.8,
+"mpg": 25.4,
+"espn_gp": 68.0,
+"espn_fppg": 21.1,
+"flags": [
+"old"
+],
+"rank": 209,
+"value": 28.9
+},
+"4432170": {
+"name": "Isaiah Jackson",
+"team": "LAC",
+"fppg": 20.76,
+"sigma": 4.8,
+"mpg": 18.1,
+"espn_gp": 67.0,
+"espn_fppg": 20.6,
+"flags": [],
+"rank": 210,
+"value": 27.7
+},
+"2991350": {
+"name": "Alex Caruso",
+"team": "OKC",
+"fppg": 20.49,
+"sigma": 4.8,
+"mpg": 24.3,
+"espn_gp": 69.0,
+"espn_fppg": 24.0,
+"flags": [
+"old"
+],
+"rank": 211,
+"value": 27.1
+},
+"3135045": {
+"name": "Grayson Allen",
+"team": "CHO",
+"fppg": 21.74,
+"sigma": 5.61,
+"mpg": 25.2,
+"espn_gp": 63.0,
+"espn_fppg": 26.6,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 212,
+"value": 26.8
+},
+"4396909": {
+"name": "Aaron Nesmith",
+"team": "IND",
+"fppg": 22.44,
+"sigma": 4.8,
+"mpg": 28.1,
+"espn_gp": 64.0,
+"espn_fppg": 24.6,
+"flags": [
+"inj_return"
+],
+"rank": 213,
+"value": 24.9
+},
+"4712896": {
+"name": "Noah Clowney",
+"team": "BRK",
+"fppg": 19.35,
+"sigma": 5.37,
+"mpg": 19.5,
+"espn_gp": 69.0,
+"espn_fppg": 15.4,
+"flags": [
+"young"
+],
+"rank": 214,
+"value": 24.0
+},
+"4900671": {
+"name": "Ajay Mitchell",
+"team": "OKC",
+"fppg": 25.59,
+"sigma": 5.37,
+"mpg": 22.3,
+"espn_gp": 55.0,
+"espn_fppg": 25.2,
+"flags": [
+"young"
+],
+"rank": 215,
+"value": 23.8
+},
+"5211175": {
+"name": "Zaccharie Risacher",
+"team": "DAL",
+"fppg": 18.78,
+"sigma": 6.11,
+"mpg": 22.8,
+"espn_gp": 68.0,
+"espn_fppg": 20.3,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 216,
+"value": 22.5
+},
+"4683778": {
+"name": "Jared McCain",
+"team": "OKC",
+"fppg": 18.95,
+"sigma": 5.37,
+"mpg": 23.4,
+"espn_gp": 69.0,
+"espn_fppg": 20.2,
+"flags": [
+"young"
+],
+"rank": 217,
+"value": 21.2
+},
+"4578893": {
+"name": "Vit Krejci",
+"team": "POR",
+"fppg": 20.39,
+"sigma": 4.8,
+"mpg": 25.7,
+"espn_gp": 65.0,
+"espn_fppg": 22.8,
+"flags": [],
+"rank": 218,
+"value": 19.8
+},
+"4888725": {
+"name": "Ryan Dunn",
+"team": "PHO",
+"fppg": 18.44,
+"sigma": 5.37,
+"mpg": 21.5,
+"espn_gp": 71.0,
+"espn_fppg": 19.2,
+"flags": [
+"young"
+],
+"rank": 219,
+"value": 18.7
+},
+"4397020": {
+"name": "Luguentz Dort",
+"team": "ATL",
+"fppg": 18.61,
+"sigma": 5.61,
+"mpg": 28.0,
+"espn_gp": 72.0,
+"espn_fppg": 21.2,
+"flags": [
+"new_team"
+],
+"rank": 220,
+"value": 18.4
+},
+"4395702": {
+"name": "Isaiah Joe",
+"team": "DET",
+"fppg": 18.63,
+"sigma": 5.61,
+"mpg": 21.3,
+"espn_gp": 72.0,
+"espn_fppg": 20.1,
+"flags": [
+"new_team"
+],
+"rank": 221,
+"value": 18.3
+},
+"4702382": {
+"name": "Tristan da Silva",
+"team": "ORL",
+"fppg": 18.77,
+"sigma": 4.8,
+"mpg": 20.7,
+"espn_gp": 77.0,
+"espn_fppg": 17.2,
+"flags": [],
+"rank": 222,
+"value": 17.7
+},
+"4684272": {
+"name": "Ja'Kobe Walter",
+"team": "TOR",
+"fppg": 18.45,
+"sigma": 5.37,
+"mpg": 21.6,
+"espn_gp": 69.0,
+"espn_fppg": 17.6,
+"flags": [
+"young"
+],
+"rank": 223,
+"value": 17.5
+},
+"3032979": {
+"name": "Dennis Schroder",
+"team": "CHO",
+"fppg": 18.48,
+"sigma": 5.61,
+"mpg": 23.9,
+"espn_gp": 72.0,
+"espn_fppg": 23.0,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 224,
+"value": 17.4
+},
+"2583632": {
+"name": "Royce O'Neale",
+"team": "CHO",
+"fppg": 18.1,
+"sigma": 5.61,
+"mpg": 23.8,
+"espn_gp": 76.0,
+"espn_fppg": 21.3,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 225,
+"value": 17.2
+},
+"4066436": {
+"name": "De'Anthony Melton",
+"team": "GSW",
+"fppg": 21.0,
+"sigma": 4.8,
+"mpg": 22.7,
+"espn_gp": 65.0,
+"espn_fppg": 24.0,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 226,
+"value": 17.1
+},
+"4066211": {
+"name": "Robert Williams III",
+"team": "POR",
+"fppg": 22.8,
+"sigma": 4.8,
+"mpg": 18.9,
+"espn_gp": 59.0,
+"espn_fppg": 26.9,
+"flags": [
+"old"
+],
+"rank": 227,
+"value": 16.3
+},
+"4065804": {
+"name": "Sam Hauser",
+"team": "BOS",
+"fppg": 18.57,
+"sigma": 4.8,
+"mpg": 24.9,
+"espn_gp": 77.0,
+"espn_fppg": 20.1,
+"flags": [
+"old"
+],
+"rank": 228,
+"value": 16.2
+},
+"4277813": {
+"name": "Herbert Jones",
+"team": "NOP",
+"fppg": 20.54,
+"sigma": 4.8,
+"mpg": 27.4,
+"espn_gp": 63.0,
+"espn_fppg": 22.1,
+"flags": [
+"old"
+],
+"rank": 229,
+"value": 15.1
+},
+"5214640": {
+"name": "Kasparas Jakucionis",
+"team": "MIL",
+"fppg": 17.45,
+"sigma": 6.11,
+"mpg": 22.6,
+"espn_gp": 68.0,
+"espn_fppg": 20.2,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 230,
+"value": 14.2
+},
+"2528210": {
+"name": "Tim Hardaway Jr.",
+"team": "MIA",
+"fppg": 17.21,
+"sigma": 5.61,
+"mpg": 26.4,
+"espn_gp": 80.0,
+"espn_fppg": 20.9,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 231,
+"value": 14.0
+},
+"4065732": {
+"name": "De'Andre Hunter",
+"team": "SAC",
+"fppg": 20.44,
+"sigma": 4.8,
+"mpg": 27.4,
+"espn_gp": 65.0,
+"espn_fppg": 23.9,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 232,
+"value": 13.5
+},
+"4397475": {
+"name": "AJ Green",
+"team": "MIL",
+"fppg": 18.22,
+"sigma": 4.8,
+"mpg": 25.4,
+"espn_gp": 76.0,
+"espn_fppg": 17.0,
+"flags": [],
+"rank": 233,
+"value": 13.2
+},
+"5106060": {
+"name": "Jarace Walker",
+"team": "IND",
+"fppg": 19.25,
+"sigma": 5.37,
+"mpg": 18.0,
+"espn_gp": 63.0,
+"espn_fppg": 16.5,
+"flags": [
+"young"
+],
+"rank": 234,
+"value": 12.9
+},
+"4701232": {
+"name": "Mark Williams",
+"team": "PHO",
+"fppg": 30.22,
+"sigma": 5.52,
+"mpg": 23.7,
+"espn_gp": 24.0,
+"espn_fppg": 31.0,
+"flags": [],
+"rank": 235,
+"value": 12.3
+},
+"4278562": {
+"name": "Paul Reed",
+"team": "DET",
+"fppg": 20.11,
+"sigma": 4.8,
+"mpg": 13.3,
+"espn_gp": 63.0,
+"espn_fppg": 20.4,
+"flags": [],
+"rank": 236,
+"value": 12.2
+},
+"4348700": {
+"name": "Goga Bitadze",
+"team": "ORL",
+"fppg": 19.21,
+"sigma": 4.8,
+"mpg": 13.2,
+"espn_gp": 65.0,
+"espn_fppg": 16.8,
+"flags": [],
+"rank": 237,
+"value": 12.0
+},
+"4277869": {
+"name": "Jose Alvarado",
+"team": "NYK",
+"fppg": 18.84,
+"sigma": 4.8,
+"mpg": 19.6,
+"espn_gp": 66.0,
+"espn_fppg": 19.5,
+"flags": [
+"old"
+],
+"rank": 238,
+"value": 11.9
+},
+"4431823": {
+"name": "Miles McBride",
+"team": "NYK",
+"fppg": 20.14,
+"sigma": 4.8,
+"mpg": 22.2,
+"espn_gp": 65.0,
+"espn_fppg": 19.7,
+"flags": [
+"inj_return"
+],
+"rank": 239,
+"value": 11.8
+},
+"5106258": {
+"name": "Gradey Dick",
+"team": "LAC",
+"fppg": 16.41,
+"sigma": 6.11,
+"mpg": 25.8,
+"espn_gp": 72.0,
+"espn_fppg": 19.5,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 240,
+"value": 11.3
+},
+"4433137": {
+"name": "Ziaire Williams",
+"team": "LAL",
+"fppg": 18.33,
+"sigma": 5.61,
+"mpg": 23.0,
+"espn_gp": 65.0,
+"espn_fppg": 19.7,
+"flags": [
+"new_team"
+],
+"rank": 241,
+"value": 11.2
+},
+"4702177": {
+"name": "Keon Ellis",
+"team": "BRK",
+"fppg": 17.3,
+"sigma": 5.61,
+"mpg": 21.0,
+"espn_gp": 72.0,
+"espn_fppg": 18.1,
+"flags": [
+"new_team"
+],
+"rank": 242,
+"value": 11.0
+},
+"5281370": {
+"name": "Hannes Steinbach",
+"team": "CHO",
+"fppg": 14.73,
+"sigma": 6.52,
+"mpg": 18.7,
+"espn_gp": 71.0,
+"espn_fppg": 17.5,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 243,
+"value": 10.2
+},
+"5105637": {
+"name": "Adem Bona",
+"team": "PHI",
+"fppg": 17.04,
+"sigma": 5.37,
+"mpg": 16.5,
+"espn_gp": 69.0,
+"espn_fppg": 15.3,
+"flags": [
+"young"
+],
+"rank": 244,
+"value": 10.0
+},
+"4683689": {
+"name": "Jordan Walsh",
+"team": "BOS",
+"fppg": 16.86,
+"sigma": 5.37,
+"mpg": 21.5,
+"espn_gp": 71.0,
+"espn_fppg": 18.6,
+"flags": [
+"young"
+],
+"rank": 245,
+"value": 9.8
+},
+"6475": {
+"name": "Klay Thompson",
+"team": "MIA",
+"fppg": 17.11,
+"sigma": 5.61,
+"mpg": 23.2,
+"espn_gp": 70.0,
+"espn_fppg": 19.5,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 246,
+"value": 9.4
+},
+"4997528": {
+"name": "Nikola Jovic",
+"team": "MIA",
+"fppg": 17.28,
+"sigma": 5.37,
+"mpg": 21.2,
+"espn_gp": 71.0,
+"espn_fppg": 19.1,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 247,
+"value": 8.0
+},
+"4277848": {
+"name": "Marvin Bagley III",
+"team": "DEN",
+"fppg": 19.41,
+"sigma": 5.61,
+"mpg": 18.0,
+"espn_gp": 61.0,
+"espn_fppg": 21.8,
+"flags": [
+"new_team"
+],
+"rank": 248,
+"value": 7.6
+},
+"4997537": {
+"name": "Tristan Vukcevic",
+"team": "WAS",
+"fppg": 15.48,
+"sigma": 6.18,
+"mpg": 13.3,
+"espn_gp": 61.0,
+"espn_fppg": 16.9,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 249,
+"value": 7.3
+},
+"4683771": {
+"name": "Ronald Holland II",
+"team": "DET",
+"fppg": 16.62,
+"sigma": 4.8,
+"mpg": 17.9,
+"espn_gp": 79.0,
+"espn_fppg": 16.1,
+"flags": [],
+"rank": 250,
+"value": 7.0
+},
+"4593841": {
+"name": "Baylor Scheierman",
+"team": "BOS",
+"fppg": 17.04,
+"sigma": 4.8,
+"mpg": 23.7,
+"espn_gp": 72.0,
+"espn_fppg": 19.2,
+"flags": [],
+"rank": 251,
+"value": 6.6
+},
+"4065778": {
+"name": "Max Strus",
+"team": "LAC",
+"fppg": 17.12,
+"sigma": 6.45,
+"mpg": 24.8,
+"espn_gp": 67.0,
+"espn_fppg": 22.4,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 252,
+"value": 6.5
+},
+"3064560": {
+"name": "Luke Kornet",
+"team": "SAS",
+"fppg": 17.14,
+"sigma": 4.8,
+"mpg": 15.3,
+"espn_gp": 71.0,
+"espn_fppg": 17.0,
+"flags": [
+"old"
+],
+"rank": 253,
+"value": 6.5
+},
+"3913174": {
+"name": "Luke Kennard",
+"team": "PHO",
+"fppg": 15.73,
+"sigma": 5.61,
+"mpg": 21.6,
+"espn_gp": 74.0,
+"espn_fppg": 19.1,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 254,
+"value": 6.3
+},
+"4397183": {
+"name": "Aaron Wiggins",
+"team": "ATL",
+"fppg": 15.93,
+"sigma": 5.61,
+"mpg": 19.5,
+"espn_gp": 72.0,
+"espn_fppg": 19.2,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 255,
+"value": 6.3
+},
+"4595400": {
+"name": "Olivier-Maxence Prosper",
+"team": "MEM",
+"fppg": 16.98,
+"sigma": 5.37,
+"mpg": 17.1,
+"espn_gp": 64.0,
+"espn_fppg": 16.9,
+"flags": [
+"young"
+],
+"rank": 256,
+"value": 6.1
+},
+"4066757": {
+"name": "Sam Merrill",
+"team": "CLE",
+"fppg": 19.01,
+"sigma": 4.8,
+"mpg": 22.9,
+"espn_gp": 62.0,
+"espn_fppg": 20.0,
+"flags": [
+"old"
+],
+"rank": 257,
+"value": 5.9
+},
+"4432822": {
+"name": "Isaac Okoro",
+"team": "CHI",
+"fppg": 17.1,
+"sigma": 4.8,
+"mpg": 21.6,
+"espn_gp": 68.0,
+"espn_fppg": 15.2,
+"flags": [],
+"rank": 258,
+"value": 5.7
+},
+"6578": {
+"name": "Harrison Barnes",
+"team": "SAS",
+"fppg": 16.09,
+"sigma": 4.8,
+"mpg": 20.5,
+"espn_gp": 80.0,
+"espn_fppg": 15.7,
+"flags": [
+"old"
+],
+"rank": 259,
+"value": 5.5
+},
+"4712863": {
+"name": "Mouhamed Gueye",
+"team": "ATL",
+"fppg": 15.52,
+"sigma": 5.37,
+"mpg": 14.8,
+"espn_gp": 70.0,
+"espn_fppg": 14.2,
+"flags": [
+"young"
+],
+"rank": 260,
+"value": 5.3
+},
+"3907823": {
+"name": "Terance Mann",
+"team": "BRK",
+"fppg": 16.65,
+"sigma": 4.8,
+"mpg": 23.8,
+"espn_gp": 71.0,
+"espn_fppg": 17.7,
+"flags": [
+"old"
+],
+"rank": 261,
+"value": 5.1
+},
+"5175647": {
+"name": "Hugo Gonzalez",
+"team": "BOS",
+"fppg": 15.15,
+"sigma": 5.37,
+"mpg": 21.7,
+"espn_gp": 74.0,
+"espn_fppg": 15.9,
+"flags": [
+"young"
+],
+"rank": 262,
+"value": 5.1
+},
+"4280151": {
+"name": "Corey Kispert",
+"team": "ATL",
+"fppg": 17.25,
+"sigma": 4.8,
+"mpg": 20.3,
+"espn_gp": 65.0,
+"espn_fppg": 16.6,
+"flags": [],
+"rank": 263,
+"value": 4.7
+},
+"5164559": {
+"name": "Nate Ament",
+"team": "MIL",
+"fppg": 12.71,
+"sigma": 6.52,
+"mpg": 18.8,
+"espn_gp": 70.0,
+"espn_fppg": 13.5,
+"flags": [
+"young",
+"rookie"
+],
+"rank": 264,
+"value": 4.6
+},
+"2581018": {
+"name": "Kentavious Caldwell-Pope",
+"team": "PHI",
+"fppg": 15.41,
+"sigma": 5.61,
+"mpg": 23.6,
+"espn_gp": 68.0,
+"espn_fppg": 17.4,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 265,
+"value": 4.3
+},
+"4432181": {
+"name": "Julian Strawther",
+"team": "DEN",
+"fppg": 15.4,
+"sigma": 5.37,
+"mpg": 16.0,
+"espn_gp": 66.0,
+"espn_fppg": 13.1,
+"flags": [
+"young"
+],
+"rank": 266,
+"value": 4.2
+},
+"2990992": {
+"name": "Marcus Smart",
+"team": "HOU",
+"fppg": 17.33,
+"sigma": 5.61,
+"mpg": 24.4,
+"espn_gp": 62.0,
+"espn_fppg": 20.4,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 267,
+"value": 4.0
+},
+"4914336": {
+"name": "Shaedon Sharpe",
+"team": "POR",
+"fppg": 27.34,
+"sigma": 6.18,
+"mpg": 24.4,
+"espn_gp": 27.0,
+"espn_fppg": 24.8,
+"flags": [
+"young"
+],
+"rank": 268,
+"value": 4.0
+},
+"4895758": {
+"name": "Cody Williams",
+"team": "MIN",
+"fppg": 15.08,
+"sigma": 6.11,
+"mpg": 22.8,
+"espn_gp": 64.0,
+"espn_fppg": 16.2,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 269,
+"value": 3.7
+},
+"4431687": {
+"name": "Patrick Williams",
+"team": "CHI",
+"fppg": 15.74,
+"sigma": 4.8,
+"mpg": 20.2,
+"espn_gp": 72.0,
+"espn_fppg": 14.4,
+"flags": [],
+"rank": 270,
+"value": 3.3
+},
+"5203685": {
+"name": "Khaman Maluach",
+"team": "PHO",
+"fppg": 16.07,
+"sigma": 5.37,
+"mpg": 20.6,
+"espn_gp": 65.0,
+"espn_fppg": 22.1,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 271,
+"value": 3.1
+},
+"4592492": {
+"name": "Bones Hyland",
+"team": "MIN",
+"fppg": 17.61,
+"sigma": 4.8,
+"mpg": 16.2,
+"espn_gp": 62.0,
+"espn_fppg": 17.1,
+"flags": [],
+"rank": 272,
+"value": 2.9
+},
+"4278355": {
+"name": "Obi Toppin",
+"team": "IND",
+"fppg": 18.18,
+"sigma": 4.8,
+"mpg": 19.5,
+"espn_gp": 63.0,
+"espn_fppg": 21.9,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 273,
+"value": 2.8
+},
+"4397077": {
+"name": "Jaxson Hayes",
+"team": "UTA",
+"fppg": 15.48,
+"sigma": 5.61,
+"mpg": 16.3,
+"espn_gp": 64.0,
+"espn_fppg": 16.5,
+"flags": [
+"new_team"
+],
+"rank": 274,
+"value": 2.7
+},
+"4610139": {
+"name": "Jeremy Sochan",
+"team": "POR",
+"fppg": 13.84,
+"sigma": 6.11,
+"mpg": 19.5,
+"espn_gp": 66.0,
+"espn_fppg": 19.4,
+"flags": [
+"young",
+"new_team",
+"inj_return"
+],
+"rank": 275,
+"value": 2.1
+},
+"6585": {
+"name": "Andre Drummond",
+"team": "NYK",
+"fppg": 17.05,
+"sigma": 5.61,
+"mpg": 18.6,
+"espn_gp": 60.0,
+"espn_fppg": 20.7,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 276,
+"value": 2.1
+},
+"3213": {
+"name": "Al Horford",
+"team": "GSW",
+"fppg": 21.7,
+"sigma": 4.8,
+"mpg": 25.0,
+"espn_gp": 56.0,
+"espn_fppg": 25.1,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 277,
+"value": 1.8
+},
+"2991043": {
+"name": "Caris LeVert",
+"team": "MIL",
+"fppg": 16.13,
+"sigma": 5.61,
+"mpg": 20.7,
+"espn_gp": 61.0,
+"espn_fppg": 19.4,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 278,
+"value": 1.7
+},
+"2528426": {
+"name": "Jordan Clarkson",
+"team": "NYK",
+"fppg": 14.72,
+"sigma": 4.8,
+"mpg": 19.0,
+"espn_gp": 66.0,
+"espn_fppg": 15.1,
+"flags": [
+"old"
+],
+"rank": 279,
+"value": 1.4
+},
+"3135046": {
+"name": "Tyus Jones",
+"team": "DEN",
+"fppg": 14.44,
+"sigma": 4.8,
+"mpg": 17.5,
+"espn_gp": 69.0,
+"espn_fppg": 14.0,
+"flags": [
+"old"
+],
+"rank": 280,
+"value": 1.4
+},
+"4431684": {
+"name": "Trayce Jackson-Davis",
+"team": "TOR",
+"fppg": 14.97,
+"sigma": 4.8,
+"mpg": 14.4,
+"espn_gp": 65.0,
+"espn_fppg": 18.2,
+"flags": [],
+"rank": 281,
+"value": 1.3
+},
+"3899664": {
+"name": "Simone Fontecchio",
+"team": "MIA",
+"fppg": 13.91,
+"sigma": 4.8,
+"mpg": 17.1,
+"espn_gp": 71.0,
+"espn_fppg": 15.3,
+"flags": [
+"old"
+],
+"rank": 282,
+"value": 1.1
+},
+"3102529": {
+"name": "Clint Capela",
+"team": "HOU",
+"fppg": 15.59,
+"sigma": 4.8,
+"mpg": 15.2,
+"espn_gp": 62.0,
+"espn_fppg": 19.3,
+"flags": [
+"old"
+],
+"rank": 283,
+"value": 0.9
+},
+"3914044": {
+"name": "Landry Shamet",
+"team": "NYK",
+"fppg": 13.9,
+"sigma": 4.8,
+"mpg": 20.8,
+"espn_gp": 67.0,
+"espn_fppg": 15.0,
+"flags": [
+"old"
+],
+"rank": 284,
+"value": 0.9
+},
+"2990984": {
+"name": "Buddy Hield",
+"team": "CHI",
+"fppg": 14.13,
+"sigma": 5.61,
+"mpg": 18.2,
+"espn_gp": 62.0,
+"espn_fppg": 16.9,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 285,
+"value": 0.8
+},
+"4594326": {
+"name": "Kris Murray",
+"team": "MEM",
+"fppg": 11.97,
+"sigma": 5.61,
+"mpg": 21.9,
+"espn_gp": 68.0,
+"espn_fppg": 14.6,
+"flags": [
+"new_team"
+],
+"rank": 286,
+"value": 0.8
+},
+"4277843": {
+"name": "Gary Trent Jr.",
+"team": "MIL",
+"fppg": 13.29,
+"sigma": 4.8,
+"mpg": 22.3,
+"espn_gp": 67.0,
+"espn_fppg": 14.4,
+"flags": [
+"old"
+],
+"rank": 287,
+"value": 0.6
+},
+"4278077": {
+"name": "Jarred Vanderbilt",
+"team": "LAL",
+"fppg": 14.99,
+"sigma": 4.8,
+"mpg": 17.1,
+"espn_gp": 62.0,
+"espn_fppg": 14.9,
+"flags": [],
+"rank": 288,
+"value": 0.6
+},
+"3133626": {
+"name": "Kenrich Williams",
+"team": "OKC",
+"fppg": 13.5,
+"sigma": 4.8,
+"mpg": 15.4,
+"espn_gp": 65.0,
+"espn_fppg": 14.2,
+"flags": [
+"old"
+],
+"rank": 289,
+"value": 0.5
+},
+"4683750": {
+"name": "Jordan Hawkins",
+"team": "CHI",
+"fppg": 10.3,
+"sigma": 6.11,
+"mpg": 15.4,
+"espn_gp": 65.0,
+"espn_fppg": 10.0,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 290,
+"value": 0.5
+},
+"3934723": {
+"name": "Thomas Bryant",
+"team": "CLE",
+"fppg": 12.52,
+"sigma": 4.8,
+"mpg": 11.6,
+"espn_gp": 68.0,
+"espn_fppg": 13.7,
+"flags": [
+"old"
+],
+"rank": 291,
+"value": 0.4
+},
+"4873201": {
+"name": "Asa Newell",
+"team": "ATL",
+"fppg": 12.04,
+"sigma": 5.37,
+"mpg": 14.1,
+"espn_gp": 66.0,
+"espn_fppg": 13.0,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 292,
+"value": 0.4
+},
+"5044385": {
+"name": "Leonard Miller",
+"team": "CHI",
+"fppg": 13.77,
+"sigma": 5.37,
+"mpg": 13.6,
+"espn_gp": 62.0,
+"espn_fppg": 13.8,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 293,
+"value": 0.4
+},
+"4433076": {
+"name": "Ben Sheppard",
+"team": "IND",
+"fppg": 14.48,
+"sigma": 4.8,
+"mpg": 18.6,
+"espn_gp": 62.0,
+"espn_fppg": 13.1,
+"flags": [],
+"rank": 294,
+"value": 0.4
+},
+"4278572": {
+"name": "Jamal Cain",
+"team": "ORL",
+"fppg": 12.78,
+"sigma": 4.8,
+"mpg": 19.3,
+"espn_gp": 69.0,
+"espn_fppg": 15.6,
+"flags": [
+"inj_return"
+],
+"rank": 295,
+"value": 0.3
+},
+"5239590": {
+"name": "Liam McNeeley",
+"team": "CHO",
+"fppg": 11.99,
+"sigma": 5.37,
+"mpg": 19.5,
+"espn_gp": 64.0,
+"espn_fppg": 14.5,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 296,
+"value": 0.3
+},
+"4432819": {
+"name": "Tre Mann",
+"team": "WAS",
+"fppg": 10.52,
+"sigma": 5.61,
+"mpg": 16.3,
+"espn_gp": 67.0,
+"espn_fppg": 13.1,
+"flags": [
+"new_team"
+],
+"rank": 297,
+"value": 0.3
+},
+"4868423": {
+"name": "Jaden Hardy",
+"team": "LAL",
+"fppg": 11.7,
+"sigma": 6.11,
+"mpg": 15.3,
+"espn_gp": 60.0,
+"espn_fppg": 12.0,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 298,
+"value": 0.3
+},
+"2993874": {
+"name": "Kyle Anderson",
+"team": "TOR",
+"fppg": 12.82,
+"sigma": 5.61,
+"mpg": 17.0,
+"espn_gp": 62.0,
+"espn_fppg": 17.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 299,
+"value": 0.2
+},
+"3037789": {
+"name": "Bogdan Bogdanovic",
+"team": "HOU",
+"fppg": 11.62,
+"sigma": 5.61,
+"mpg": 17.6,
+"espn_gp": 65.0,
+"espn_fppg": 16.4,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 300,
+"value": 0.2
+},
+"3912848": {
+"name": "Dean Wade",
+"team": "PHI",
+"fppg": 14.0,
+"sigma": 5.61,
+"mpg": 21.5,
+"espn_gp": 58.0,
+"espn_fppg": 16.3,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 301,
+"value": 0.2
+},
+"5099752": {
+"name": "Rayan Rupert",
+"team": "PHI",
+"fppg": 10.56,
+"sigma": 6.11,
+"mpg": 15.7,
+"espn_gp": 61.0,
+"espn_fppg": 11.0,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 302,
+"value": 0.2
+},
+"5081727": {
+"name": "Sidy Cissoko",
+"team": "POR",
+"fppg": 11.81,
+"sigma": 5.37,
+"mpg": 16.2,
+"espn_gp": 62.0,
+"espn_fppg": 10.6,
+"flags": [
+"young"
+],
+"rank": 303,
+"value": 0.2
+},
+"5105806": {
+"name": "Jett Howard",
+"team": "DAL",
+"fppg": 7.91,
+"sigma": 6.11,
+"mpg": 12.4,
+"espn_gp": 66.0,
+"espn_fppg": 9.4,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 304,
+"value": 0.2
+},
+"3907498": {
+"name": "Matisse Thybulle",
+"team": "LAL",
+"fppg": 14.0,
+"sigma": 5.61,
+"mpg": 18.8,
+"espn_gp": 59.0,
+"espn_fppg": 19.2,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 305,
+"value": 0.1
+},
+"6609": {
+"name": "Khris Middleton",
+"team": "WAS",
+"fppg": 18.08,
+"sigma": 4.8,
+"mpg": 19.8,
+"espn_gp": 53.0,
+"espn_fppg": 20.5,
+"flags": [
+"old"
+],
+"rank": 306,
+"value": 0.1
+},
+"4432847": {
+"name": "Terrence Shannon Jr.",
+"team": "MIN",
+"fppg": 11.5,
+"sigma": 4.8,
+"mpg": 20.7,
+"espn_gp": 69.0,
+"espn_fppg": 14.9,
+"flags": [
+"inj_return"
+],
+"rank": 307,
+"value": 0.1
+},
+"4066218": {
+"name": "Grant Williams",
+"team": "CHO",
+"fppg": 12.49,
+"sigma": 4.8,
+"mpg": 19.0,
+"espn_gp": 63.0,
+"espn_fppg": 16.3,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 308,
+"value": 0.1
+},
+"3136196": {
+"name": "Trey Lyles",
+"team": "MIN",
+"fppg": 11.01,
+"sigma": 5.61,
+"mpg": 19.7,
+"espn_gp": 64.0,
+"espn_fppg": 16.0,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 309,
+"value": 0.1
+},
+"3155535": {
+"name": "Kevon Looney",
+"team": "LAL",
+"fppg": 10.41,
+"sigma": 5.61,
+"mpg": 15.0,
+"espn_gp": 65.0,
+"espn_fppg": 15.7,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 310,
+"value": 0.1
+},
+"4277922": {
+"name": "Jericho Sims",
+"team": "MIL",
+"fppg": 11.39,
+"sigma": 4.8,
+"mpg": 17.5,
+"espn_gp": 64.0,
+"espn_fppg": 13.9,
+"flags": [
+"old"
+],
+"rank": 311,
+"value": 0.1
+},
+"3138160": {
+"name": "Caleb Martin",
+"team": "DAL",
+"fppg": 11.04,
+"sigma": 4.8,
+"mpg": 17.0,
+"espn_gp": 67.0,
+"espn_fppg": 12.4,
+"flags": [
+"old"
+],
+"rank": 312,
+"value": 0.1
+},
+"4431714": {
+"name": "Jalen Wilson",
+"team": "ATL",
+"fppg": 10.51,
+"sigma": 5.61,
+"mpg": 18.0,
+"espn_gp": 63.0,
+"espn_fppg": 11.0,
+"flags": [
+"new_team"
+],
+"rank": 313,
+"value": 0.1
+},
+"4432247": {
+"name": "Jaylen Clark",
+"team": "MIN",
+"fppg": 10.26,
+"sigma": 4.8,
+"mpg": 13.1,
+"espn_gp": 68.0,
+"espn_fppg": 9.4,
+"flags": [],
+"rank": 314,
+"value": 0.1
+},
+"4897943": {
+"name": "Dalton Knecht",
+"team": "LAL",
+"fppg": 10.69,
+"sigma": 4.8,
+"mpg": 12.0,
+"espn_gp": 66.0,
+"espn_fppg": 9.0,
+"flags": [],
+"rank": 315,
+"value": 0.1
+},
+"5289900": {
+"name": "Mohamed Diawara",
+"team": "NYK",
+"fppg": 9.09,
+"sigma": 5.37,
+"mpg": 9.2,
+"espn_gp": 69.0,
+"espn_fppg": 7.3,
+"flags": [
+"young"
+],
+"rank": 316,
+"value": 0.1
+},
+"4684275": {
+"name": "Rob Dillingham",
+"team": "FA",
+"fppg": 12.98,
+"sigma": 6.11,
+"mpg": 20.5,
+"espn_gp": 68.0,
+"espn_fppg": 16.5,
+"flags": [
+"young",
+"new_team"
+],
+"rank": 317,
+"value": 0.0
+},
+"2580365": {
+"name": "Larry Nance Jr.",
+"team": "IND",
+"fppg": 10.64,
+"sigma": 5.61,
+"mpg": 17.8,
+"espn_gp": 62.0,
+"espn_fppg": 16.9,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 318,
+"value": 0.0
+},
+"4066650": {
+"name": "Zach Collins",
+"team": "CHI",
+"fppg": 12.88,
+"sigma": 4.8,
+"mpg": 14.3,
+"espn_gp": 56.0,
+"espn_fppg": 15.8,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 319,
+"value": 0.0
+},
+"3150844": {
+"name": "Moritz Wagner",
+"team": "BRK",
+"fppg": 9.75,
+"sigma": 5.61,
+"mpg": 13.3,
+"espn_gp": 62.0,
+"espn_fppg": 14.2,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 320,
+"value": 0.0
+},
+"3136776": {
+"name": "D'Angelo Russell",
+"team": "FA",
+"fppg": 13.98,
+"sigma": 5.61,
+"mpg": 17.2,
+"espn_gp": 48.0,
+"espn_fppg": 17.3,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 321,
+"value": 0.0
+},
+"3195": {
+"name": "Mike Conley",
+"team": "BOS",
+"fppg": 13.31,
+"sigma": 5.61,
+"mpg": 17.8,
+"espn_gp": 55.0,
+"espn_fppg": 14.8,
+"flags": [
+"old",
+"new_team"
+],
+"rank": 322,
+"value": 0.0
+},
+"3907387": {
+"name": "Ben Simmons",
+"team": "SAC",
+"fppg": 16.75,
+"sigma": 5.61,
+"mpg": 21.2,
+"espn_gp": 37.0,
+"espn_fppg": 21.7,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 323,
+"value": 0.0
+},
+"2990962": {
+"name": "Taurean Prince",
+"team": "DET",
+"fppg": 10.62,
+"sigma": 5.61,
+"mpg": 16.4,
+"espn_gp": 62.0,
+"espn_fppg": 12.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 324,
+"value": 0.0
+},
+"5107897": {
+"name": "Jonathan Mogbo",
+"team": "SAC",
+"fppg": 6.5,
+"sigma": 5.61,
+"mpg": 12.0,
+"espn_gp": 66.0,
+"espn_fppg": 11.3,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 325,
+"value": 0.0
+},
+"4432107": {
+"name": "Marcus Sasser",
+"team": "DAL",
+"fppg": 8.51,
+"sigma": 5.61,
+"mpg": 13.1,
+"espn_gp": 60.0,
+"espn_fppg": 12.4,
+"flags": [
+"new_team",
+"inj_return"
+],
+"rank": 326,
+"value": 0.0
+},
+"5157066": {
+"name": "Johnny Furphy",
+"team": "IND",
+"fppg": 11.59,
+"sigma": 6.18,
+"mpg": 16.1,
+"espn_gp": 61.0,
+"espn_fppg": 11.6,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 327,
+"value": 0.0
+},
+"3133635": {
+"name": "Jevon Carter",
+"team": "ORL",
+"fppg": 11.78,
+"sigma": 4.8,
+"mpg": 15.4,
+"espn_gp": 51.0,
+"espn_fppg": 13.4,
+"flags": [
+"old"
+],
+"rank": 328,
+"value": 0.0
+},
+"2578185": {
+"name": "Dorian Finney-Smith",
+"team": "ATL",
+"fppg": 7.03,
+"sigma": 5.61,
+"mpg": 18.1,
+"espn_gp": 64.0,
+"espn_fppg": 10.6,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 329,
+"value": 0.0
+},
+"4432811": {
+"name": "Josh Green",
+"team": "UTA",
+"fppg": 10.14,
+"sigma": 5.61,
+"mpg": 18.3,
+"espn_gp": 59.0,
+"espn_fppg": 11.4,
+"flags": [
+"new_team"
+],
+"rank": 330,
+"value": 0.0
+},
+"2991235": {
+"name": "Steven Adams",
+"team": "HOU",
+"fppg": 9.86,
+"sigma": 4.8,
+"mpg": 12.2,
+"espn_gp": 63.0,
+"espn_fppg": 10.6,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 331,
+"value": 0.0
+},
+"3134916": {
+"name": "Jordan McLaughlin",
+"team": "SAS",
+"fppg": 4.51,
+"sigma": 4.8,
+"mpg": 10.1,
+"espn_gp": 64.0,
+"espn_fppg": 9.7,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 332,
+"value": 0.0
+},
+"4065654": {
+"name": "Jonathan Isaac",
+"team": "ORL",
+"fppg": 9.96,
+"sigma": 4.8,
+"mpg": 10.9,
+"espn_gp": 55.0,
+"espn_fppg": 10.9,
+"flags": [
+"old"
+],
+"rank": 333,
+"value": 0.0
+},
+"5217746": {
+"name": "Yang Hansen",
+"team": "POR",
+"fppg": 6.83,
+"sigma": 5.37,
+"mpg": 12.7,
+"espn_gp": 65.0,
+"espn_fppg": 8.9,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 334,
+"value": 0.0
+},
+"4683774": {
+"name": "Bronny James",
+"team": "LAL",
+"fppg": 7.9,
+"sigma": 5.37,
+"mpg": 11.9,
+"espn_gp": 63.0,
+"espn_fppg": 9.0,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 335,
+"value": 0.0
+},
+"4591259": {
+"name": "Koby Brea",
+"team": "PHO",
+"fppg": 8.45,
+"sigma": 5.37,
+"mpg": 10.2,
+"espn_gp": 63.0,
+"espn_fppg": 8.8,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 336,
+"value": 0.0
+},
+"5242496": {
+"name": "Noa Essengue",
+"team": "CHI",
+"fppg": 8.19,
+"sigma": 5.37,
+"mpg": 7.9,
+"espn_gp": 64.0,
+"espn_fppg": 8.3,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 337,
+"value": 0.0
+},
+"2578239": {
+"name": "Pat Connaughton",
+"team": "CHO",
+"fppg": 4.18,
+"sigma": 4.8,
+"mpg": 9.4,
+"espn_gp": 66.0,
+"espn_fppg": 7.8,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 338,
+"value": 0.0
+},
+"4431752": {
+"name": "Kobe Brown",
+"team": "IND",
+"fppg": 10.08,
+"sigma": 4.8,
+"mpg": 10.8,
+"espn_gp": 62.0,
+"espn_fppg": 8.0,
+"flags": [],
+"rank": 339,
+"value": 0.0
+},
+"3136777": {
+"name": "Jae'Sean Tate",
+"team": "HOU",
+"fppg": 5.25,
+"sigma": 4.8,
+"mpg": 12.1,
+"espn_gp": 54.0,
+"espn_fppg": 8.9,
+"flags": [
+"old",
+"inj_return"
+],
+"rank": 340,
+"value": 0.0
+},
+"5239561": {
+"name": "Jase Richardson",
+"team": "ORL",
+"fppg": 9.9,
+"sigma": 5.37,
+"mpg": 10.9,
+"espn_gp": 54.0,
+"espn_fppg": 8.6,
+"flags": [
+"young"
+],
+"rank": 341,
+"value": 0.0
+},
+"2999547": {
+"name": "Gary Harris",
+"team": "FA",
+"fppg": 3.8,
+"sigma": 5.61,
+"mpg": 14.5,
+"espn_gp": 48.0,
+"espn_fppg": 8.9,
+"flags": [
+"old",
+"new_team",
+"inj_return"
+],
+"rank": 342,
+"value": 0.0
+},
+"4398390": {
+"name": "Jalen Pickett",
+"team": "LAC",
+"fppg": 9.57,
+"sigma": 5.61,
+"mpg": 11.3,
+"espn_gp": 49.0,
+"espn_fppg": 8.6,
+"flags": [
+"new_team"
+],
+"rank": 343,
+"value": 0.0
+},
+"5105553": {
+"name": "Julian Phillips",
+"team": "HOU",
+"fppg": 5.23,
+"sigma": 6.11,
+"mpg": 10.1,
+"espn_gp": 52.0,
+"espn_fppg": 7.2,
+"flags": [
+"young",
+"new_team",
+"inj_return"
+],
+"rank": 344,
+"value": 0.0
+},
+"5211983": {
+"name": "Pacome Dadiet",
+"team": "NYK",
+"fppg": 5.79,
+"sigma": 5.37,
+"mpg": 9.0,
+"espn_gp": 58.0,
+"espn_fppg": 6.3,
+"flags": [
+"young",
+"inj_return"
+],
+"rank": 345,
+"value": 0.0
+},
+"4397886": {
+"name": "Charles Bassey",
+"team": "GSW",
+"fppg": 13.88,
+"sigma": 4.8,
+"mpg": 11.3,
+"espn_gp": 17.0,
+"espn_fppg": 14.5,
+"flags": [
+"inj_return"
+],
+"rank": 346,
+"value": 0.0
+},
+"4433569": {
+"name": "Johni Broome",
+"team": "MIL",
+"fppg": 4.06,
+"sigma": 6.11,
+"mpg": 8.3,
+"espn_gp": 33.0,
+"espn_fppg": 7.0,
+"flags": [
+"young",
+"new_team",
+"inj_return"
+],
+"rank": 347,
+"value": 0.0
+},
+"3934673": {
+"name": "Donte DiVincenzo",
+"team": "MIN",
+"fppg": 24.19,
+"sigma": 5.52,
+"mpg": 24.1,
+"espn_gp": 4.0,
+"espn_fppg": 23.0,
+"flags": [
+"old"
+],
+"rank": 348,
+"value": 0.0
+}
+}
+}

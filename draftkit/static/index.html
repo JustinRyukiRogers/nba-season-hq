@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draft board</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="bar-main">
+    <div class="league" id="league-name">Draft board</div>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="bar-side">
+    <span class="chip" id="sync-chip" title=""></span>
+    <span class="mock-group" id="mock-group">
+      <span class="group-label">Practice</span>
+      <button id="btn-mock-one" title="Let the room model make the next pick">Next pick</button>
+      <button id="btn-mock-me" title="Let the room model pick until it is your turn">To my turn</button>
+    </span>
+    <button id="btn-undo" title="Remove the last pick">Undo</button>
+    <button id="btn-reset" class="quiet" title="Clear every pick">Reset</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="col-main">
+    <div class="panel rec" id="rec"></div>
+
+    <div class="panel board">
+      <div class="toolbar">
+        <div class="tabs" role="tablist">
+          <button class="tab on" data-view="players" role="tab">Players</button>
+          <button class="tab" data-view="grid" role="tab">Draft grid</button>
+        </div>
+        <input id="search" type="search" placeholder="Search players or teams   ( / )" autocomplete="off" spellcheck="false">
+        <div class="seg" id="pos-filter">
+          <button class="on" data-pos="">All</button><button data-pos="PG">PG</button><button data-pos="SG">SG</button><button data-pos="SF">SF</button><button data-pos="PF">PF</button><button data-pos="C">C</button>
+        </div>
+        <label class="check"><input type="checkbox" id="show-taken"> Show drafted</label>
+        <span class="hint" id="search-hint"></span>
+      </div>
+      <div class="table-wrap" id="players-view">
+        <table id="board-table">
+          <colgroup></colgroup>
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="table-wrap" id="grid-view" hidden></div>
+    </div>
+  </section>
+
+  <aside class="col-side">
+    <div class="panel" id="roster"></div>
+    <div class="panel" id="log"></div>
+  </aside>
+</main>
+
+<aside class="drawer" id="drawer" hidden></aside>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

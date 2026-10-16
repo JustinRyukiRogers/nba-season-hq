@@ -1,0 +1,81 @@
+# Refreshes the Season HQ page from ESPN every 20 minutes and publishes it to GitHub Pages.
+# The page data is encrypted with SITE_PASSPHRASE before it leaves the runner; ESPN_S2 and SWID
+# are the ESPN login cookies (the league is private). All three are repository secrets.
+name: refresh
+
+on:
+  schedule:
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write        # to keep the schedule switched on (see the last build step)
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checks
+        run: python3 tests/test_season.py
+
+      - name: Restore cached public data (news, schedule, injury report)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: public-${{ github.run_id }}
+          restore-keys: public-
+
+      - name: Refresh from ESPN
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          SWID: ${{ secrets.SWID }}
+          TZ: America/New_York
+        run: python3 -m seasonkit refresh
+
+      - name: Encrypt the page data
+        env:
+          SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}
+        run: |
+          node seasonkit/crypt.mjs encrypt site/data.json site/data.enc
+          rm site/data.json
+
+      - name: Save cached public data
+        if: always() && hashFiles('cache/news.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: public-${{ github.run_id }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      # GitHub switches off schedules in public repos after 60 days without activity;
+      # re-enabling the workflow through the API resets that.
+      - name: Keep the schedule on
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh.yml/enable" || true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
