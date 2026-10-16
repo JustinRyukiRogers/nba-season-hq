@@ -1,15 +1,28 @@
-"""What to do with the roster: IR moves, today's lineup, pickups, stashes and streams.
+"""What to do with the roster: IR moves, today's lineup, pickups, stashes and streams, how urgent
+each one is, and how your players are doing against their projections.
 
 Everything here reads the normalized league and the valued players from build.py and returns
 plain data for the page. Nothing writes to ESPN.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from .model import best_lineup, project_days
+from .model import ET, best_lineup, parse_day, project_days
 
 STREAM_DROPS = 3          # drop candidates tried for each stream: your lowest-valued players
 STREAM_POOL = 40          # free agents tried as streams, by expected points this week
 LINEUP_MIN_GAIN = 0.5     # expected points before a lineup change is worth suggesting
+
+# How urgent a to-do is. now: it costs points or blocks you today. soon: it has a deadline, or
+# someone may get there first. optional: a small gain, or no one is racing you. fyi: nothing to do.
+URGENCY = ("now", "soon", "optional", "fyi")
+STASH_SOON_VALUE = 75.0   # a stash worth at least this much is worth beating a deadline for
+INTEREST_OWNED = 25.0     # % of ESPN leagues rostering him: managers here will want him too
+INTEREST_ADDS = 0.5       # rise in % owned in a day that counts as interest
+HOT_ADDS = 2.0            # rise in % owned in a day: he is being added fast and will not last
+
+# Team report flags: enough games, and far enough off the projection, to be more than noise.
+HOT_GAMES, HOT_SHARE = 8, 0.15    # points per game 15% off the projection over 8+ games
+ROLE_GAMES, ROLE_MINUTES = 3, 4.0  # minutes per game 4+ off over 3+ games (minutes settle fastest)
 
 
 def roster(league, team_id, include_ir=True):
@@ -27,6 +40,14 @@ def name(players, pid):
     return players[pid]["name"] if pid in players else "Player %s" % pid
 
 
+def clock(ts):
+    return datetime.fromtimestamp(ts, ET).strftime("%a %b %-d, %-I:%M %p ET")
+
+
+def plural(n, word):
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
 # ---------- injured reserve ----------
 
 def ir_actions(league, players, me):
@@ -41,10 +62,11 @@ def ir_actions(league, players, me):
         p = players.get(e["id"])
         if p and p["status"] != "OUT":
             drop = weakest(players, active)
-            acts.append({"kind": "ir_blocked", "level": "critical", "player": p["id"], "drop": drop,
+            acts.append({"kind": "ir_blocked", "urgency": "now", "player": p["id"], "drop": drop,
                          "title": "%s is no longer Out, so ESPN blocks your adds" % p["name"],
                          "detail": "Activate him from IR before any pickup or claim. That needs a free roster "
-                                   "spot: %s has the lowest value on your roster." % name(players, drop)})
+                                   "spot: %s has the lowest value on your roster." % name(players, drop),
+                         "why": "Every add and claim is blocked until he is out of IR."})
     outs = [players[e["id"]] for e in active if e["id"] in players and players[e["id"]]["status"] == "OUT"]
     outs.sort(key=lambda p: -p["ros"]["absent"])
     ir_players = [players[e["id"]] for e in on_ir if e["id"] in players and players[e["id"]]["status"] == "OUT"]
@@ -53,18 +75,19 @@ def ir_actions(league, players, me):
         when = "out for the season" if p["ros"]["season_over"] else ("expected back %s" % back if back else "no return date")
         if free_ir > 0:
             free_ir -= 1
-            acts.append({"kind": "to_ir", "level": "high", "player": p["id"],
+            acts.append({"kind": "to_ir", "urgency": "soon", "player": p["id"],
                          "title": "Move %s to IR" % p["name"],
-                         "detail": "He is tagged Out (%s). The move is free and opens a roster spot for a pickup." % when})
+                         "detail": "He is tagged Out (%s). The move is free and opens a roster spot for a pickup." % when,
+                         "why": "Free to do; do it before your next add."})
             continue
         soonest = min(ir_players, key=lambda q: q["ros"]["absent"]) if ir_players else None
         if soonest and p["ros"]["absent"] > soonest["ros"]["absent"] + 1:
-            acts.append({"kind": "ir_swap", "level": "medium", "player": p["id"], "other": soonest["id"],
+            acts.append({"kind": "ir_swap", "urgency": "soon", "player": p["id"], "other": soonest["id"],
                          "title": "IR is full: swap %s in for %s" % (p["name"], soonest["name"]),
                          "detail": "%s is due back sooner (%s), so he costs you fewer games on the bench than "
                                    "%s (%s)." % (soonest["name"], soonest["ros"]["back"], p["name"], when)})
         else:
-            acts.append({"kind": "ir_full", "level": "medium", "player": p["id"],
+            acts.append({"kind": "ir_full", "urgency": "fyi", "player": p["id"],
                          "title": "%s is Out but both IR slots are taken" % p["name"],
                          "detail": "He holds a bench spot until he is back (%s). Keep him unless his value "
                                    "(%.0f) is below the best free agent's." % (when, p["ros"]["value"])})
@@ -150,7 +173,8 @@ def stash(league, players, me, free_ir, top=12):
             and p["ros"]["value"] > 0]
     rows.sort(key=lambda p: -p["ros"]["value"])
     active = roster(league, me, include_ir=False)
-    return {"free_ir": free_ir, "drop": weakest(players, active),
+    healthy = sorted((p for p in free_agents(players) if not p["ros"]["out"]), key=lambda p: -p["ros"]["value"])
+    return {"free_ir": free_ir, "drop": weakest(players, active), "refill": healthy[0]["id"] if healthy else None,
             "list": [{"id": p["id"], "back": p["ros"]["back"], "games_after": p["ros"]["games"]} for p in rows[:top]]}
 
 
@@ -238,7 +262,7 @@ def injury_board(league, players, me, opp, calendar, beneficiaries=3):
         row = {"id": p["id"], "who": "mine" if p["owner"] == me else "opp" if p["owner"] == opp
                else "fa" if p["owner"] == 0 else "league"}
         back = p["ros"]["back"]
-        if p["ros"]["out"] and back and (calendar.today + timedelta(days=7)) <= _day(back):
+        if p["ros"]["out"] and back and (calendar.today + timedelta(days=7)) <= parse_day(back):
             pos = set(p["pos"])
             mates = [q for q in free_agents(players) if q["team"] == p["team"] and q["id"] != p["id"]
                      and pos & set(q["pos"]) and not q["ros"]["out"]]
@@ -250,47 +274,199 @@ def injury_board(league, players, me, opp, calendar, beneficiaries=3):
     return rows
 
 
-def _day(s):
-    from .model import parse_day
-    return parse_day(s)
-
-
 # ---------- the action list ----------
 
 def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers):
-    """The few things worth doing now, most urgent first."""
+    """The few things worth doing, each with how urgent it is (URGENCY) and, when there is one, the
+    deadline ("by", epoch seconds): most urgent first, then the nearest deadline."""
     acts = list(ir)
     if lineup.get("state") == "season":
+        tip = {r["id"]: r["tip"] for r in lineup["rows"] if r["tip"] and not r["locked"]}
         for w in lineup["warnings"]:
-            acts.append({"kind": "lineup_warning", "level": "high", "player": w["player"], "title": w["text"]})
+            acts.append({"kind": "lineup_warning", "urgency": "now", "by": tip.get(w["player"]),
+                         "player": w["player"], "title": w["text"]})
         if lineup["start"]:
-            acts.append({"kind": "lineup", "level": "high", "title": "Fix today's lineup (+%.1f expected points)" % lineup["gain"],
-                         "start": lineup["start"], "sit": lineup["sit"]})
+            moved = [tip[i] for i in lineup["start"] + lineup["sit"] if i in tip]
+            acts.append({"kind": "lineup", "urgency": "now", "by": min(moved) if moved else None,
+                         "title": "Fix today's lineup (+%.1f expected points)" % lineup["gain"],
+                         "start": lineup["start"], "sit": lineup["sit"],
+                         "why": "Each player locks at his game's tip-off."})
     if waivers.get("all_on_waivers"):
-        acts.append({"kind": "waivers", "level": "info",
+        acts.append({"kind": "waivers", "urgency": "fyi",
                      "title": "Every free agent is on waivers until %s" % waivers["clears_label"],
                      "detail": "Claims process then in waiver order; you are #%s of %d." % (waivers["my_rank"], league["size"])})
-    if stream_list["list"]:
-        s = stream_list["list"][0]
-        if s["net"] >= 10:
-            acts.append({"kind": "stream", "level": "medium", "player": s["id"], "drop": s["drop"],
-                         "title": "Stream %s for %s (+%.0f points this week)" % (name(players, s["id"]), name(players, s["drop"]), s["gain"]),
-                         "detail": "%d game%s left this week." % (s["games"], "" if s["games"] == 1 else "s")
-                                   + (" Costs %.0f of rest-of-season value." % s["ros_cost"] if s["ros_cost"] >= 1 else "")})
+    if stream_list["list"] and stream_list["list"][0]["net"] >= 10:
+        acts.append(stream_action(league, players, stream_list, calendar))
     if ups["list"] and ups["list"][0]["gain"] >= 25:
-        u = ups["list"][0]
-        acts.append({"kind": "upgrade", "level": "medium", "player": u["id"], "drop": ups["drop"],
-                     "title": "Upgrade: %s over %s (+%.0f value)" % (name(players, u["id"]), name(players, ups["drop"]), u["gain"])})
+        acts.append(upgrade_action(players, ups, waivers))
     if stash_list["free_ir"] > 0 and stash_list["list"]:
-        st = stash_list["list"][0]
-        n = stash_list["free_ir"]
-        acts.append({"kind": "stash", "level": "low", "player": st["id"], "drop": stash_list["drop"],
-                     "title": "IR stash: %s (back %s)" % (name(players, st["id"]), st["back"]),
-                     "detail": "You have %d free IR slot%s. He costs nothing while he is Out, but ESPN may want a "
-                               "free roster spot for the add itself: if so, drop %s, add him, move him to IR, and "
-                               "refill the spot the next day.%s"
-                               % (n, "" if n == 1 else "s", name(players, stash_list["drop"]),
-                                  " That would use your last IR slot, leaving none for your own injuries." if n == 1 else "")})
-    rank = {"critical": 0, "high": 1, "medium": 2, "info": 3, "low": 4}
-    acts.sort(key=lambda a: rank[a["level"]])
+        acts.append(stash_action(league, players, me, stash_list, waivers, calendar))
+    order = {u: i for i, u in enumerate(URGENCY)}
+    acts.sort(key=lambda a: (order[a["urgency"]], a.get("by") or float("inf")))
     return acts
+
+
+def _claim(p):
+    """The waiver deadline if he can only be claimed, else None (he can be added outright)."""
+    return p.get("waiver_until") if p["fa"] == "WAIVERS" else None
+
+
+def _ahead(waivers):
+    return max(0, (waivers.get("my_rank") or 1) - 1)
+
+
+def stream_action(league, players, stream_list, calendar):
+    s = stream_list["list"][0]
+    first = calendar.first_tip(parse_day(stream_list["days"][0]))
+    why = "Adds lock at the day's first tip-off%s, and the gain shrinks with each day you wait." % (
+        " (%s)" % clock(first) if first else "")
+    if league["acq"].get("per_day"):
+        why += " Uses your one add for the day."
+    return {"kind": "stream", "urgency": "now" if first and first - calendar.now <= 86400 else "soon", "by": first,
+            "player": s["id"], "drop": s["drop"],
+            "title": "Stream %s for %s (+%.0f points this week)" % (name(players, s["id"]), name(players, s["drop"]), s["gain"]),
+            "detail": "%s left this week." % plural(s["games"], "game")
+                      + (" Costs %.0f of rest-of-season value." % s["ros_cost"] if s["ros_cost"] >= 1 else ""),
+            "why": why}
+
+
+def upgrade_action(players, ups, waivers):
+    u = ups["list"][0]
+    p = players[u["id"]]
+    claim, hot = _claim(p), p["own_chg"] >= HOT_ADDS
+    why = []
+    if hot:
+        why.append("He is being added fast across ESPN (%+.1f%% owned today) and will not last." % p["own_chg"])
+    if claim:
+        why.append("Claims process %s; %s claim before you." % (clock(claim), plural(_ahead(waivers), "team")))
+    elif not hot:
+        why.append("First come, first served, but no rush elsewhere (%+.1f%% owned today)." % p["own_chg"])
+    return {"kind": "upgrade", "urgency": "now" if hot else "soon", "by": claim, "player": u["id"], "drop": ups["drop"],
+            "title": "Upgrade: %s over %s (+%.0f value)" % (p["name"], name(players, ups["drop"]), u["gain"]),
+            "why": " ".join(why)}
+
+
+def stash_action(league, players, me, stash_list, waivers, calendar):
+    """The best stash as a to-do. Holding him costs nothing while he is Out; the add itself may
+    need a roster spot, so the steps cover ESPN asking for a drop. Urgency: a claim has a deadline,
+    and a player many ESPN leagues roster will interest this one too."""
+    st = stash_list["list"][0]
+    p = players[st["id"]]
+    drop, refill, n = stash_list["drop"], stash_list.get("refill"), stash_list["free_ir"]
+    value, claim = p["ros"]["value"], _claim(p)
+    interest = p["own"] >= INTEREST_OWNED or p["own_chg"] >= INTEREST_ADDS
+    soon = value >= STASH_SOON_VALUE and (bool(claim and claim - calendar.now <= 2 * 86400) or interest)
+
+    why = []
+    if claim:
+        why.append("Claims process %s, and %s claim before you; after that he is first come, first served."
+                   % (clock(claim), plural(_ahead(waivers), "team")))
+    why.append("%.0f%% owned across ESPN (%+.1f today)." % (p["own"], p["own_chg"]))
+    if not soon:
+        why.append("A modest gain, so no rush." if value < STASH_SOON_VALUE else "Few leagues want him, so he should still be there.")
+
+    swap = max(0.0, players[drop]["ros"]["value"] - players[refill]["ros"]["value"]) if drop and refill else 0.0
+    mine = [players[e["id"]] for e in roster(league, me) if e["id"] in players and e["id"] != p["id"]]
+    like = min(mine, key=lambda q: abs(q["ros"]["value"] - value)) if mine else None
+    back = parse_day(st["back"]).strftime("%b %-d") if st["back"] else "?"
+    detail = ("Worth about %.0f over a waiver pickup once he is back%s; that already allows for a late return. "
+              "He costs nothing while he sits in IR (%s free)." % (
+                  value, " (close to %s's value to you)" % like["name"] if like else "", plural(n, "slot")))
+    if drop:
+        detail += " Gain: +%.0f if ESPN puts him straight into IR, about +%.0f if you have to drop %s for him." % (
+            value, value - swap, name(players, drop))
+
+    steps = []
+    dname = name(players, drop) if drop else None
+    if drop and value - swap <= 0:
+        steps.append("Add him only if ESPN lets you put him straight into IR: swapping out %s costs more than he adds." % dname)
+    elif claim:
+        steps.append("Claim him before %s. If ESPN asks for a drop, pick %s; the drop only happens if you win "
+                     "the claim." % (clock(claim), dname))
+    else:
+        steps.append("Add him. If ESPN asks for a drop, pick %s." % dname)
+    steps.append("Once he is yours, move him to IR.")
+    if drop and refill and value - swap > 0:
+        refill_step = "If you dropped %s, use the open spot on the best free agent (%s right now)." % (dname, name(players, refill))
+        if calendar.today < calendar.start and league["acq"].get("per_day"):
+            refill_step += (" ESPN may count the days before the opener as one day for the one-add-a-day "
+                            "limit; if it refuses, the add goes through %s." % (calendar.start + timedelta(days=1)).strftime("%a %b %-d"))
+        steps.append(refill_step)
+    if n == 1:
+        steps.append("This uses your last IR slot, leaving none for your own injuries.")
+    return {"kind": "stash", "urgency": "soon" if soon else "optional", "by": claim if soon else None,
+            "player": p["id"], "drop": drop, "title": "IR stash: %s (back %s)" % (p["name"], back),
+            "detail": detail, "why": " ".join(why), "steps": steps}
+
+
+# ---------- how your players compare with their projections ----------
+
+def team_games_played(calendar, team):
+    return sum(1 for g in calendar.by_team.get(team, []) if g["date"] >= calendar.start and g["tip"] <= calendar.now)
+
+
+def team_report(league, players, me, priors, calendar):
+    """Your players against their preseason projections: this season's points per game and
+    minutes next to the draft board's (the prior the values start from) and ESPN's, how far the
+    model has moved toward the actual average, and flags when the gap is more than noise."""
+    board = priors.get("players") or {}
+    rows = []
+    for e in roster(league, me):
+        p = players.get(e["id"])
+        if not p:
+            continue
+        b = board.get(str(p["id"])) or {}
+        espn_proj = p["stats"].get("proj") or [None, None, None]
+        season = p["stats"].get("season")
+        gp = season[0] if season else 0
+        row = {"id": p["id"], "slot": e["slot"], "gp": gp, "team_gp": team_games_played(calendar, p["team"]),
+               "fppg": season[2] if gp else None, "mpg": season[1] if gp else None,
+               "proj": p["ros"]["prior"], "proj_from": p["ros"]["prior_from"],
+               "proj_mpg": b.get("mpg") or espn_proj[1], "espn": b.get("espn_fppg") or espn_proj[2],
+               "now": p["ros"]["fppg"], "moved": round(1 - p["ros"]["prior_weight"], 2) if gp else 0.0,
+               "gap": None, "flags": []}
+        if gp:
+            row["gap"] = round(row["fppg"] - row["proj"], 1)
+            if gp >= HOT_GAMES and abs(row["gap"]) >= HOT_SHARE * row["proj"]:
+                row["flags"].append("hot" if row["gap"] > 0 else "cold")
+            if row["proj_mpg"] and gp >= ROLE_GAMES and abs(row["mpg"] - row["proj_mpg"]) >= ROLE_MINUTES:
+                row["flags"].append("min_up" if row["mpg"] > row["proj_mpg"] else "min_down")
+        rows.append(row)
+    rows.sort(key=lambda r: -r["now"])
+
+    played = [r for r in rows if r["gp"]]
+    games = sum(r["gp"] for r in played)
+    team = {"games": games, "team_games": sum(r["team_gp"] for r in rows)}
+    if games:
+        team["points"] = round(sum(r["gp"] * r["fppg"] for r in played))
+        team["projected"] = round(sum(r["gp"] * r["proj"] for r in played))
+        team["mpg"] = round(sum(r["gp"] * r["mpg"] for r in played) / games, 1)
+        timed = [r for r in played if r["proj_mpg"]]
+        if timed:
+            team["proj_mpg"] = round(sum(r["gp"] * r["proj_mpg"] for r in timed) / sum(r["gp"] for r in timed), 1)
+    return {"rows": rows, "team": team, "league": projection_check(players, board)}
+
+
+def projection_check(players, board):
+    """Which preseason projection is tracking better, over every rostered player the draft board
+    valued who has played: the games-weighted average miss per game, and the average of actual
+    minus projected (positive: players are beating it)."""
+    n = games = 0
+    miss = {"board": 0.0, "espn": 0.0}
+    bias = {"board": 0.0, "espn": 0.0}
+    for p in players.values():
+        b = board.get(str(p["id"]))
+        season = p["stats"].get("season")
+        if not p["owner"] or not b or not b.get("espn_fppg") or not season or not season[0]:
+            continue
+        gp, actual = season[0], season[2]
+        n, games = n + 1, games + gp
+        for k, proj in (("board", b["fppg"]), ("espn", b["espn_fppg"])):
+            miss[k] += gp * abs(actual - proj)
+            bias[k] += gp * (actual - proj)
+    out = {"players": n, "games": games}
+    if games:
+        for k in miss:
+            out[k + "_miss"] = round(miss[k] / games, 1)
+            out[k + "_bias"] = round(bias[k] / games, 1)
+    return out

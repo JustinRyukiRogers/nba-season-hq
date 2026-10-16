@@ -3,7 +3,7 @@
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
-  data: null, key: null, tab: 'today', wtab: 'adds', pos: '', instant: false, q: '', who: 'all',
+  data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
 };
 const TZ = 'America/New_York';
@@ -24,6 +24,7 @@ function esc(s) {
 function n0(x) { return x == null ? '–' : Math.round(x).toLocaleString('en-US'); }
 function n1(x) { return x == null ? '–' : (Math.round(x * 10) / 10).toFixed(1); }
 function signed(x) { return x == null ? '–' : (x > 0.5 ? '+' : x < -0.5 ? '−' : '') + n0(Math.abs(x)); }
+function signed1(x) { return x == null ? '–' : (x > 0.05 ? '+' : x < -0.05 ? '−' : '') + Math.abs(x).toFixed(1); }
 function isoDate(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d, 12)); }
 function dayLabel(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
 function dayShort(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' }); }
@@ -82,7 +83,7 @@ function isNew(p) {
 
 function row(p, nums, opts = {}) {
   if (!p) return '';
-  const cls = 'row' + (p.owner === me() && !opts.plain ? ' mine' : '');
+  const cls = 'row' + (p.owner === me() && !opts.plain ? ' mine' : '') + (opts.cls ? ' ' + opts.cls : '');
   const badge = (opts.badge || '') + (isNew(p) ? ' <span class="chip new" title="News since you last looked">NEW</span>' : '');
   const left = `<div class="who"><div class="nm">${opts.prefix || ''}${esc(p.name)} ${statusChip(p)} ${faChip(p)}${badge}</div>`
     + `<div class="meta">${opts.meta || meta(p)}</div></div>`;
@@ -109,7 +110,7 @@ function render() {
   const d = S.data;
   $('#title').textContent = d.league.name + ' · ' + abbr(me());
   freshness();
-  const urgent = d.actions.some(a => a.level === 'critical' || a.level === 'high');
+  const urgent = d.actions.some(a => urgencyOf(a) === 'now');
   for (const b of document.querySelectorAll('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === S.tab);
     b.setAttribute('aria-selected', b.dataset.tab === S.tab);
@@ -142,6 +143,10 @@ function viewToday() {
   out.push('<h2>To do</h2>');
   if (!d.actions.length) out.push('<div class="card muted">Nothing needs doing right now.</div>');
   for (const a of d.actions) out.push(actionCard(a));
+  if (d.actions.length) {
+    out.push(`<p class="small muted">${URGENCY.now}: it costs points or blocks you today. ${URGENCY.soon}: it has a deadline, or someone may get there first.
+      ${URGENCY.optional}: a small gain, or no one is racing you.</p>`);
+  }
   out.push(matchupCard());
   out.push(lineupCard());
   return out.join('');
@@ -151,7 +156,14 @@ const PILL_LABELS = {
   ir_blocked: ['activate', 'drop'], to_ir: ['to IR'], ir_swap: ['to IR'], stream: ['add', 'drop'],
   upgrade: ['add', 'drop'], stash: ['add', 'drop if needed'],
 };
+const URGENCY = { now: 'Do now', soon: 'Soon', optional: 'Optional', fyi: 'FYI' };
+const WHY = { now: 'Why now', soon: 'Why soon', optional: 'Why it can wait', fyi: 'Note' };
+function urgencyOf(a) {
+  // data from before urgency levels existed carried an importance level instead
+  return a.urgency || { critical: 'now', high: 'now', medium: 'soon', low: 'optional', info: 'fyi' }[a.level] || 'fyi';
+}
 function actionCard(a) {
+  const u = urgencyOf(a);
   const [l1, l2] = PILL_LABELS[a.kind] || ['', 'drop'];
   const pills = [];
   if (a.player) pills.push(pill(a.player, l1));
@@ -159,9 +171,12 @@ function actionCard(a) {
   if (a.drop) pills.push(pill(a.drop, l2));
   for (const id of a.start || []) pills.push(pill(id, 'start'));
   for (const id of a.sit || []) pills.push(pill(id, 'bench'));
-  return `<div class="card act ${a.level}"><div class="t">${esc(a.title)}</div>`
+  const chip = `<span class="urg ${u}">${URGENCY[u]}${a.by ? ' · by ' + esc(whenLabel(a.by)) : ''}</span>`;
+  return `<div class="card act ${u}"><div class="t">${chip}${esc(a.title)}</div>`
     + (a.detail ? `<div class="d">${esc(a.detail)}</div>` : '')
-    + (pills.length ? `<div class="who">${pills.join('')}</div>` : '') + '</div>';
+    + (a.steps && a.steps.length ? `<ol class="steps">${a.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
+    + (pills.length ? `<div class="who">${pills.join('')}</div>` : '')
+    + (a.why ? `<div class="why"><b>${WHY[u]}:</b> ${esc(a.why)}</div>` : '') + '</div>';
 }
 function pill(id, label) {
   const p = P(id);
@@ -211,6 +226,13 @@ function lineupCard() {
 
 // ----- Roster -----
 function viewRoster() {
+  const seg = [['values', 'Values'], ['vs', 'Actual vs projected'], ['news', 'News']]
+    .map(([k, l]) => `<button data-rtab="${k}" class="${S.rtab === k ? 'on' : ''}">${l}</button>`).join('');
+  const body = S.rtab === 'vs' ? viewVsProjection() : S.rtab === 'news' ? viewTeamNews() : viewValues();
+  return `<div class="toolbar"><div class="seg">${seg}</div></div>${body}`;
+}
+
+function viewValues() {
   const d = S.data;
   const entries = [...myRoster()].filter(e => P(e.id)).sort((a, b) => bySlot(a, b) || P(b.id).ros.value - P(a.id).ros.value);
   const ir = entries.filter(e => e.slot === 'IR').length;
@@ -226,6 +248,74 @@ function viewRoster() {
     <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk G</b>: games left this matchup week.
     <b>Games</b>: games he is expected to play from here. <b>Value</b>: points above a waiver pickup over the rest of the season, playoff weeks counting 1.5×.
     Lowest value first: ${drops}.</p>`;
+}
+
+const FLAGS = {
+  hot: ['HOT', 'up', 'At least 8 games, 15% or more above his projection'],
+  cold: ['COLD', 'down', 'At least 8 games, 15% or more below his projection'],
+  min_up: ['MIN ▲', 'up', 'At least 3 games, 4 or more minutes a game above his projection'],
+  min_down: ['MIN ▼', 'down', 'At least 3 games, 4 or more minutes a game below his projection'],
+};
+
+function viewVsProjection() {
+  const d = S.data, R = d.team_report;
+  if (!R) return '<div class="empty">This view fills in after the next refresh.</div>';
+  const t = R.team, chk = R.league, out = [];
+  if (!t.games) {
+    out.push(`<div class="banner">No games yet: the season starts <b>${dayLabel(d.calendar.start)}</b>. Actual numbers fill in as games are played,
+      with every refresh. Until then this shows the projections the dashboard is working from.</div>`);
+  } else {
+    const diff = t.points - t.projected, pct = t.projected ? 100 * diff / t.projected : 0;
+    out.push(`<div class="tiles">
+      <div class="tile"><b class="${diff >= 0 ? 'pos' : 'down'}">${signed(diff)}</b><span>points against projection over ${plural(t.games, 'game')} (${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1)}%)</span></div>
+      <div class="tile"><b>${n1(t.mpg)}</b><span>minutes a game${t.proj_mpg ? ', projected ' + n1(t.proj_mpg) : ''}</span></div>
+      <div class="tile"><b>${t.games} of ${t.team_games}</b><span>team games played</span></div>
+    </div>`);
+  }
+  const rows = R.rows.map(r => {
+    const p = P(r.id);
+    if (!p) return '';
+    const flags = r.flags.map(f => FLAGS[f] ? `<span class="chip ${FLAGS[f][1]}" title="${esc(FLAGS[f][2])}">${FLAGS[f][0]}</span>` : '').join(' ');
+    const bits = [r.gp ? `${r.gp} of ${r.team_gp} games` : esc(nextGame(p))];
+    if (r.proj_mpg) bits.push(r.gp ? `${n1(r.mpg)} min (proj ${n1(r.proj_mpg)})` : `proj ${n1(r.proj_mpg)} min`);
+    if (r.gp && p.stats.l7) bits.push(`last 7 days ${n1(p.stats.l7[2])}`);
+    if (r.espn) bits.push(`ESPN proj ${n1(r.espn)}`);
+    const latest = (p.news || [])[0];
+    const when = latest && Date.parse(latest.at) / 1000;
+    const note = latest ? `<span class="muted">${esc(when ? ago(when) : '')}:</span> ${esc(latest.headline)}` : '';
+    return row(p, [['proj', n1(r.proj)], ['actual', r.gp ? n1(r.fppg) : '–'],
+      ['gap', r.gp ? signed1(r.gap) : '–', r.gap == null ? '' : r.gap >= 0 ? 'pos' : 'down'], ['now', n1(r.now), '', true]],
+      { prefix: `<span class="chip slot${r.slot === 'IR' ? ' ir' : ''}">${esc(r.slot)}</span> `,
+        meta: (flags ? flags + ' ' : '') + bits.join(' · '), note, plain: true, cls: 'wrap' });
+  }).join('');
+  out.push(`<div class="rows">${rows}</div>`);
+  if (chk && chk.games) {
+    out.push(`<p class="small">Across the ${plural(chk.players, 'rostered player')} the draft board valued (${plural(chk.games, 'game')} so far), the board's
+      projection misses by <b>${n1(chk.board_miss)}</b> points a game on average and ESPN's by <b>${n1(chk.espn_miss)}</b>; players are
+      ${chk.board_bias >= 0 ? 'beating' : 'falling short of'} the board by ${n1(Math.abs(chk.board_bias))} a game. Over the first few weeks most of
+      either miss is game-to-game noise.</p>`);
+  }
+  out.push(`<p class="small muted"><b>Proj</b>: the draft board's points per game for him (frozen at the draft${d.model.priors_from ? ', ' + esc(d.model.priors_from) : ''}).
+    <b>Actual</b>: this season's fantasy points per game. <b>Gap</b>: actual minus projected; with few games it is mostly noise.
+    <b>Now</b>: the per-game number the dashboard values him at: the projection moved toward his actual average as games accrue,
+    the two counting equally after ${n0(d.model.prior_games)} games. <b>HOT/COLD</b>: 8+ games and 15% off projection.
+    <b>MIN ▲/▼</b>: 3+ games and 4+ minutes a game off projection; minutes settle faster than scoring, so they are the first sign of a role change.</p>`);
+  return out.join('');
+}
+
+function viewTeamNews() {
+  const items = [];
+  for (const e of myRoster()) {
+    const p = P(e.id);
+    for (const n of (p && p.news) || []) items.push([Date.parse(n.at) / 1000 || 0, p, n]);
+  }
+  items.sort((a, b) => b[0] - a[0]);
+  if (!items.length) return '<div class="empty">No news on your players yet.</div>';
+  const since = S.prev && S.prev.at;
+  return `<p class="lead small">ESPN's fantasy news on your players, newest first. Tap one for his card.</p>
+    <div class="card">${items.slice(0, 60).map(([ts, p, n]) => `<div class="news" data-pid="${p.id}">
+      <div class="when"><b>${esc(p.name)}</b> ${statusChip(p)} · ${esc(ts ? whenLabel(ts) + ' · ' + ago(ts) : '')}${n.kind === 'article' ? ' · ESPN article' : ''}${since && ts > since ? ' <span class="chip new">NEW</span>' : ''}</div>
+      <div class="hl">${esc(n.headline)}</div>${n.story ? `<div class="st">${esc(n.story)}</div>` : ''}</div>`).join('')}</div>`;
 }
 
 // ----- Waivers -----
@@ -466,6 +556,7 @@ function boot() {
     S.key = getItem('hq.key');
   }
   S.tab = getItem('hq.tab') || 'today';
+  S.rtab = getItem('hq.rtab') || 'values';
 
   $('#tabs').addEventListener('click', e => {
     const b = e.target.closest('button[data-tab]');
@@ -477,10 +568,11 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-pos],[data-who],[data-pid],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],#lock-now');
     if (!t) return;
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
+    if (t.dataset.rtab != null) { S.rtab = t.dataset.rtab; setItem('hq.rtab', S.rtab); render(); return; }
     if (t.dataset.pos != null) { S.pos = t.dataset.pos; render(); return; }
     if (t.dataset.who != null) { S.who = t.dataset.who; render(); return; }
     if (t.dataset.pid) openPlayer(t.dataset.pid);

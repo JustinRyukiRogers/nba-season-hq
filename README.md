@@ -10,11 +10,18 @@ the hosted page's data.
 The page: https://justinryukirogers.github.io/nba-season-hq/ (asks once per device for the
 passphrase, which is `SITE_PASSPHRASE` in `.env`).
 
-- **Today**: what to do now, most urgent first. A healthy player left in an IR slot (ESPN then
-  blocks every add), an Out player who could go to IR, today's lineup against the best one
-  (starting with opening night), the best stream, a clear upgrade, an IR stash. Then the matchup:
-  score, projection from both sides' best daily lineups, starts left.
-- **Roster**: slot, status, next game, games this week, rest-of-season points per game, value.
+- **Today**: the to-do list. A healthy player left in an IR slot (ESPN then blocks every add), an
+  Out player who could go to IR, today's lineup against the best one (starting with opening
+  night), the best stream, a clear upgrade, an IR stash. Each carries an urgency, with the reason
+  and any deadline: **Do now** (it costs points or blocks you today), **Soon** (a deadline such as
+  a waiver run, or others may get there first), **Optional** (a small gain, or no one is racing
+  you), **FYI**. Then the matchup: score, projection from both sides' best daily lineups, starts left.
+- **Roster**: three views. *Values*: slot, status, next game, games this week, rest-of-season
+  points per game, value. *Actual vs projected*: each player's points per game and minutes this
+  season next to the draft board's projection and ESPN's, the gap, the number the dashboard now
+  uses, and HOT/COLD (8+ games, 15% off) and MIN ▲/▼ (3+ games, 4+ minutes off) flags; above it,
+  the team's points against projection, and a league-wide check of whether the board or ESPN is
+  tracking reality better. *News*: ESPN's fantasy news on your players, newest first.
 - **Waivers**: best adds (value against your weakest player), IR stashes (free agents tagged Out,
   so IR-eligible, ranked by what they add once back), streams for the rest of the week (points
   added to your daily lineups, minus any long-term value given up), and ESPN-wide trending adds.
@@ -27,15 +34,18 @@ he plays each, fantasy points by period, news.
 
 ### How it stays live
 
-`.github/workflows/refresh.yml` runs every 20 minutes (GitHub can run scheduled jobs late or skip
-one when busy; the page shows the data's age and turns amber after 90 minutes). It runs the
+`.github/workflows/refresh.yml` runs every 20 minutes. GitHub's own schedule never fired for this
+repo, so an outside timer (a cron-job.org job) starts it instead, through GitHub's
+`workflow_dispatch` API with a fine-grained token that can only run this repo's workflows
+(Actions: read and write); the `schedule:` in the workflow stays as a backup. The page shows
+the data's age and turns amber after 90 minutes. It runs the
 checks, pulls from ESPN with the cookies in the repository secrets `ESPN_S2` and `SWID`,
 encrypts the result with `SITE_PASSPHRASE`, and publishes `site/` to GitHub Pages. If a run
 fails, GitHub emails you and the page keeps the last good data. Run it by hand from the repo's
 Actions tab (refresh, Run workflow).
 
-What is public: this code, `data/priors.json` (the draft board's per-game numbers) and
-`data/calibration.json`. The page itself is public too, but its data is only `data.enc`,
+What is public: this code and `data/priors.json` (the draft board's per-game numbers and its
+fitted games coefficients). The page itself is public too, but its data is only `data.enc`,
 AES-256 under the passphrase. The cookies never leave the secrets; `.gitignore` keeps `.env`,
 the draft-night board and `data/intel.json` out of the repo.
 
@@ -44,6 +54,10 @@ When something changes:
     gh secret set ESPN_S2 -R JustinRyukiRogers/nba-season-hq     # cookies expired (runs fail with HTTP 401)
     gh secret set SWID -R JustinRyukiRogers/nba-season-hq
     gh secret set SITE_PASSPHRASE -R JustinRyukiRogers/nba-season-hq   # new passphrase; update .env too
+
+If cron-job.org's history shows 401s, the timer's token has expired or was revoked (it was made
+to last to 2027-04-01): make a new one the same way and paste it into the job's Authorization
+header (`Bearer <token>`).
 
 GitHub switches schedules off in public repos after 60 days without activity. Each run
 re-enables its own workflow to prevent that; if the page ever goes stale for a day, check
@@ -79,8 +93,10 @@ The blend weight, the 60% and 93% play chances and the stream thresholds are jud
 fitted. ESPN's rules that matter, as read on 2026-10-16: 1 add a day, waivers 24 hours with a
 rolling order, lineups lock per game, only players tagged Out fit an IR slot, and a healthy
 player in IR blocks adds. Whether ESPN lets you add an Out player straight into an empty IR slot
-when the bench is full is not confirmed; the stash advice allows for either. Streams assume an
-add made after the day's first tip-off counts from the next day.
+when the bench is full is not confirmed; the stash advice allows for either. Nor is whether
+ESPN counts the days before the opener as one scoring day for the 1-add-a-day limit. Streams
+assume an add made after the day's first tip-off counts from the next day. The HOT/COLD and
+MIN flags are display rules of thumb, not fitted.
 
 # The draft kit
 

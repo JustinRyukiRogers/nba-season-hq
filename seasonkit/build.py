@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 from draftkit import calibrate, espn
-from draftkit.config import DATA, ROOT, SLOT_NAMES, TEAMS, load_env, read_json, write_json
+from draftkit.config import DATA, ROOT, SEASON, SLOT_NAMES, TEAMS, load_env, read_json, write_json
 from draftkit.sources import norm_name
 
 from . import advice, model, pull
@@ -105,7 +105,8 @@ def normalize_player(entry, starting, ids):
     own = pl.get("ownership") or {}
     eligible = {SLOT_NAMES.get(s) for s in pl.get("eligibleSlots", [])}
     recent = [[x.get("scoringPeriodId"), round(x.get("appliedTotal") or 0, 1), round((x.get("stats") or {}).get("40", 0))]
-              for x in stats if x.get("statSplitTypeId") == 5 and x.get("statSourceId") == 0 and x.get("stats")]
+              for x in stats if x.get("statSplitTypeId") == 5 and x.get("statSourceId") == 0 and x.get("stats")
+              and x.get("seasonId") == SEASON]
     return {
         "id": pl["id"], "name": pl["fullName"], "team": TEAMS.get(pl.get("proTeamId"), "FA"),
         "pos": [p for p in POSITIONS if p in eligible], "slots": sorted(e for e in eligible if e in starting),
@@ -207,6 +208,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
                "my_rank": league["teams"][str(me)]["waiver_rank"],
                "order": sorted((t["waiver_rank"] or 99, int(tid)) for tid, t in league["teams"].items())}
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers)
+    report = advice.team_report(league, players, me, priors, calendar)
 
     # transactions from the last four scoring days
     sp = league["scoring_period"] or 1
@@ -246,7 +248,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "priors_from": priors.get("board_generated")},
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
-        "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me),
+        "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
     }
@@ -275,7 +277,10 @@ def summary(data):
         print("  note:", prob)
     print("\nactions:")
     for a in data["actions"]:
-        print("  [%s] %s" % (a["level"], a["title"]))
+        by = " (by %s)" % datetime.fromtimestamp(a["by"], model.ET).strftime("%a %-I:%M %p") if a.get("by") else ""
+        print("  [%s%s] %s" % (a["urgency"], by, a["title"]))
+        if a.get("why"):
+            print("      why: %s" % a["why"])
     print("\nyour roster (lowest value first is the drop order):")
     for e in sorted(lg["teams"][me]["roster"], key=lambda e: -pl[str(e["id"])]["ros"]["value"]):
         p = pl[str(e["id"])]
@@ -294,6 +299,13 @@ def summary(data):
         p = pl[str(row["id"])]
         print("  %-24s %-3s back %s  ros %5.1f  games after %4.1f  value %6.1f" % (
             p["name"][:24], p["team"], row["back"], p["ros"]["fppg"], row["games_after"], p["ros"]["value"]))
+    t, chk = data["team_report"]["team"], data["team_report"]["league"]
+    if t["games"]:
+        print("\nyour players vs projection: %d games, %d points vs %d projected; %.1f min vs %s projected" % (
+            t["games"], t["points"], t["projected"], t["mpg"], t.get("proj_mpg", "?")))
+    if chk["games"]:
+        print("projection check, %d rostered players over %d games: board misses %.1f/game (bias %+.1f), ESPN %.1f (%+.1f)" % (
+            chk["players"], chk["games"], chk["board_miss"], chk["board_bias"], chk["espn_miss"], chk["espn_bias"]))
     m = data["matchup"]
     if m and "me" in m:
         print("\nweek %d vs %s: %.0f-%.0f now, projected %.0f-%.0f" % (

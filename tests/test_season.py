@@ -104,6 +104,70 @@ def test_lineup_check():
     assert any(w["player"] == 4 for w in res["warnings"]), "an Out starter with a game is flagged"
 
 
+def test_urgency():
+    class Cal:
+        pass
+    cal = Cal()
+    cal.now, cal.today, cal.start = 1_000_000, date(2026, 10, 16), date(2026, 10, 20)
+    lg = league_with([(1, "BE"), (2, "UT")])
+    lg["acq"] = {"per_day": True}
+    deadline = cal.now + 16 * 3600
+    players = {1: player(1, value=120.0), 2: player(2, value=500.0),
+               10: player(10, "OUT", value=130.0, out=True, back="2027-01-02", owner=0, fa="WAIVERS"),
+               11: player(11, value=105.0, owner=0, fa="WAIVERS")}
+    for pid, own, chg in ((10, 45.0, -0.7), (11, 30.0, 0.1)):
+        players[pid].update(own=own, own_chg=chg, waiver_until=deadline)
+    st = {"free_ir": 2, "drop": 1, "refill": 11, "list": [{"id": 10, "back": "2027-01-02", "games_after": 15.8}]}
+    a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
+    assert a["urgency"] == "soon" and a["by"] == deadline, a
+    assert "7 teams claim before you" in a["why"]
+    assert "Wed Oct 21" in a["steps"][-1], "before the opener the refill may have to wait for the second scoring day"
+
+    waivers = {"all_on_waivers": True, "clears_label": "Sat", "my_rank": 8}
+    acts = advice.actions(lg, players, 3, cal, [{"kind": "ir_blocked", "urgency": "now", "title": "x"}], {"state": "preseason"},
+                          {"drop": 1, "list": []}, st, {"days": [], "list": []}, waivers)
+    assert [x["urgency"] for x in acts] == ["now", "soon", "fyi"], "most urgent first"
+
+    players[10].update(own=3.0, own_chg=0.0, fa="FREEAGENT", waiver_until=None)
+    players[10]["ros"]["value"] = 40.0
+    a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
+    assert a["urgency"] == "optional" and a["by"] is None, "a small gain no one is chasing can wait"
+    players[10]["ros"]["value"] = 10.0
+    a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
+    assert "only if ESPN lets you" in a["steps"][0], "a stash worth less than the swap it may force is not worth a drop"
+
+
+def test_team_report():
+    class Cal:
+        pass
+    cal = Cal()
+    cal.start, cal.now = date(2026, 10, 20), 10_000
+    cal.by_team = {"BOS": [{"date": cal.start + timedelta(days=i), "tip": 1000 * i} for i in range(12)]}   # 11 tipped off
+    hot, cold, idle = player(1), player(2), player(3)
+    hot["stats"], cold["stats"], idle["stats"] = {"season": [10, 36.0, 40.0]}, {"season": [4, 25.0, 20.0]}, {}
+    for p, prior, weight in ((hot, 32.0, 0.6), (cold, 30.0, 0.79), (idle, 25.0, 1.0)):
+        p["ros"].update(prior=prior, prior_from="draft board", prior_weight=weight)
+    priors = {"players": {"1": {"fppg": 32.0, "mpg": 30.0, "espn_fppg": 38.0}, "2": {"fppg": 30.0, "mpg": 31.0, "espn_fppg": 28.0}}}
+    rep = advice.team_report(league_with([(1, "UT"), (2, "BE"), (3, "BE")]), {1: hot, 2: cold, 3: idle}, 3, priors, cal)
+    rows = {r["id"]: r for r in rep["rows"]}
+    assert rows[1]["flags"] == ["hot", "min_up"], rows[1]
+    assert rows[2]["flags"] == ["min_down"], "4 games is too few to call him cold, but 6 fewer minutes is a role change"
+    assert rows[3]["gp"] == 0 and rows[3]["gap"] is None and rows[3]["team_gp"] == 11
+    t = rep["team"]
+    assert (t["games"], t["points"], t["projected"]) == (14, 480, 440), t
+    chk = rep["league"]
+    assert chk["players"] == 2 and abs(chk["board_miss"] - 120 / 14) < 0.06 and abs(chk["espn_miss"] - 52 / 14) < 0.06, chk
+
+
+def test_recent_games_this_season_only():
+    from draftkit.config import SEASON
+    from seasonkit import build
+    games = [{"seasonId": SEASON - 1, "statSourceId": 0, "statSplitTypeId": 5, "scoringPeriodId": 172, "appliedTotal": 21.0, "stats": {"40": 25}},
+             {"seasonId": SEASON, "statSourceId": 0, "statSplitTypeId": 5, "scoringPeriodId": 2, "appliedTotal": 33.0, "stats": {"40": 31}}]
+    entry = {"onTeamId": 3, "status": "ONTEAM", "player": {"id": 9, "fullName": "Test Player", "proTeamId": 2, "eligibleSlots": [], "stats": games}}
+    assert build.normalize_player(entry, ["PG"], {})["recent"] == [[2, 33.0, 31]], "last season's final games are not this season's"
+
+
 def test_encryption_round_trip():
     node = shutil.which("node")
     if not node:
