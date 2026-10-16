@@ -1,6 +1,7 @@
 # Refreshes the Season HQ page from ESPN every 20 minutes and publishes it to GitHub Pages.
 # The page data is encrypted with SITE_PASSPHRASE before it leaves the runner; ESPN_S2 and SWID
 # are the ESPN login cookies (the league is private). All three are repository secrets.
+# GitHub runs schedules best-effort: runs can start late or be skipped when Actions is busy.
 name: refresh
 
 on:
