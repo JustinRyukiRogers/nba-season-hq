@@ -309,8 +309,9 @@ def summary(data):
     if plan["days"]:
         print("\nweek plan: %.0f points from your lineups (%.0f without moves)" % (plan["points"], plan["points_now"]))
         for m in plan["moves"]:
-            print("  %s: add %s, drop %s (+%.0f, net %+.0f)" % (m["day"], pl[str(m["id"])]["name"], pl[str(m["drop"])]["name"],
-                                                             m["gain"], m["net"]))
+            what = "IR stash" if m["kind"] == "stash" else "+%.0f that day" % m["gain"]
+            print("  %s: add %s, drop %s (%s)" % (m["day"], pl[str(m["id"])]["name"],
+                                                  pl[str(m["drop"])]["name"] if m["drop"] else "nobody: open spot", what))
     print("\ntrade ideas (your gain in season lineup points; theirs on ESPN's numbers):")
     for t in data["trades"]["list"][:6]:
         names = lambda ids: " + ".join(pl[str(i)]["name"] for i in ids)
