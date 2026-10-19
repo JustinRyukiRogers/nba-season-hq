@@ -193,12 +193,32 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         p["week"] = {"games": sum(1 for d in days if d in p["odds"]),
                      "points": round(sum(p["odds"].get(d, 0.0) for d in days) * p["ros"]["fppg"], 1)}
 
+    # transactions from the last four scoring days (also: has today's add been used?)
+    sp = league["scoring_period"] or 1
+    try:
+        txs = normalize_transactions(pull.transactions(cookies, range(max(1, sp - 3), sp + 1)))
+    except Exception as err:
+        problems.append("transactions failed (%s)" % type(err).__name__)
+        txs = []
+
     # moves
     ir, free_ir = advice.ir_actions(league, players, me)
     lineup = advice.lineup_check(league, players, me, calendar)
     ups = advice.upgrades(league, players, me)
     stash_list = advice.stash(league, players, me, free_ir)
-    stream_list = advice.streams(league, players, me, calendar)
+    stream_list = advice.streams(league, players, me, calendar, txs)
+    plan = advice.week_plan(league, players, me, calendar, txs)
+    trades = advice.trade_ideas(league, players, me, calendar)
+
+    # starts, not games: what each roster's best daily lineups get out of it, if it is held
+    for tid, t in league["teams"].items():
+        ids = [e["id"] for e in t["roster"] if e["slot"] != "IR" and e["id"] in players]
+        outlook, pts = advice.lineup_outlook(ids, players, league["starting"], calendar)
+        weeks = len(calendar.weeks) - (calendar.current_week() or 0)
+        t["outlook"] = {"points": round(pts), "per_week": round(pts / weeks) if weeks else 0}
+        if int(tid) == me:
+            for pid, o in outlook.items():
+                players[pid]["lineup"] = o
     match = advice.matchup(league, players, me, calendar)
     opp = match["opp"] if match else None
     on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
@@ -207,16 +227,8 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
                "clears_label": datetime.fromtimestamp(clears, model.ET).strftime("%a %b %-d, %-I:%M %p ET") if clears else None,
                "my_rank": league["teams"][str(me)]["waiver_rank"],
                "order": sorted((t["waiver_rank"] or 99, int(tid)) for tid, t in league["teams"].items())}
-    acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers)
+    acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)
-
-    # transactions from the last four scoring days
-    sp = league["scoring_period"] or 1
-    try:
-        txs = normalize_transactions(pull.transactions(cookies, range(max(1, sp - 3), sp + 1)))
-    except Exception as err:
-        problems.append("transactions failed (%s)" % type(err).__name__)
-        txs = []
 
     # news: your roster, this week's opponent, and the free agents worth a look
     interesting = {e["id"] for e in league["teams"][str(me)]["roster"]}
@@ -248,6 +260,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "priors_from": priors.get("board_generated")},
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
+        "plan": plan, "trades": trades,
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
@@ -284,10 +297,21 @@ def summary(data):
     print("\nyour roster (lowest value first is the drop order):")
     for e in sorted(lg["teams"][me]["roster"], key=lambda e: -pl[str(e["id"])]["ros"]["value"]):
         p = pl[str(e["id"])]
-        r = p["ros"]
-        print("  %-3s %-24s %-3s %-11s ros %5.1f  games %4.1f  value %6.1f%s" % (
-            e["slot"], p["name"][:24], p["team"], p["status"], r["fppg"], r["games"], r["value"],
+        r, lu = p["ros"], p.get("lineup") or {}
+        print("  %-3s %-24s %-3s %-11s ros %5.1f  games %4.1f  starts %4.1f  value %6.1f%s" % (
+            e["slot"], p["name"][:24], p["team"], p["status"], r["fppg"], r["games"], lu.get("starts", 0), r["value"],
             "  back %s" % r["back"] if r["out"] else ""))
+    plan = data["plan"]
+    if plan["days"]:
+        print("\nweek plan: %.0f points from your lineups (%.0f without moves)" % (plan["points"], plan["points_now"]))
+        for m in plan["moves"]:
+            print("  %s: add %s, drop %s (+%.0f, net %+.0f)" % (m["day"], pl[str(m["id"])]["name"], pl[str(m["drop"])]["name"],
+                                                             m["gain"], m["net"]))
+    print("\ntrade ideas (your gain in season lineup points; theirs on ESPN's numbers):")
+    for t in data["trades"]["list"][:6]:
+        names = lambda ids: " + ".join(pl[str(i)]["name"] for i in ids)
+        print("  %-4s give %s, get %s: %+d (them %+d ESPN, %+d here)" % (
+            lg["teams"][str(t["team"])]["abbrev"], names(t["give"]), names(t["get"]), t["gain"], t["their_espn"], t["their_gain"]))
     print("\nbest free agents (rest-of-season value):")
     for row in data["upgrades"]["list"][:8]:
         p = pl[str(row["id"])]

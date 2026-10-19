@@ -1,5 +1,5 @@
 'use strict';
-// Season HQ: renders the refresh's data (site/data.json, encrypted as data.enc when hosted) in five
+// Season HQ: renders the refresh's data (site/data.json, encrypted as data.enc when hosted) in seven
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
@@ -116,7 +116,7 @@ function render() {
     b.setAttribute('aria-selected', b.dataset.tab === S.tab);
     if (b.dataset.tab === 'today') b.innerHTML = 'Today' + (urgent ? '<span class="dot" title="Something needs doing"></span>' : '');
   }
-  const views = { today: viewToday, roster: viewRoster, waivers: viewWaivers, injuries: viewInjuries, league: viewLeague };
+  const views = { today: viewToday, week: viewWeek, roster: viewRoster, waivers: viewWaivers, trades: viewTrades, injuries: viewInjuries, league: viewLeague };
   $('#view').innerHTML = views[S.tab]();
 }
 
@@ -171,6 +171,8 @@ function actionCard(a) {
   if (a.drop) pills.push(pill(a.drop, l2));
   for (const id of a.start || []) pills.push(pill(id, 'start'));
   for (const id of a.sit || []) pills.push(pill(id, 'bench'));
+  for (const id of a.give || []) pills.push(pill(id, 'give'));
+  for (const id of a.get || []) pills.push(pill(id, 'get'));
   const chip = `<span class="urg ${u}">${URGENCY[u]}${a.by ? ' · by ' + esc(whenLabel(a.by)) : ''}</span>`;
   return `<div class="card act ${u}"><div class="t">${chip}${esc(a.title)}</div>`
     + (a.detail ? `<div class="d">${esc(a.detail)}</div>` : '')
@@ -191,7 +193,7 @@ function matchupCard() {
   const total = (m.me.projected + m.them.projected) || 1;
   const days = m.me.by_day.map((r, i) => {
     const t = m.them.by_day[i] || [r[0], 0, 0];
-    return `<tr><td>${dayShort(r[0])}</td><td class="r">${r[2]}</td><td class="r">${n0(r[1])}</td><td class="r">${t[2]}</td><td class="r">${n0(t[1])}</td></tr>`;
+    return `<tr><td>${dayShort(r[0])}</td><td class="r">${n0(r[2])}</td><td class="r">${n0(r[1])}</td><td class="r">${n0(t[2])}</td><td class="r">${n0(t[1])}</td></tr>`;
   }).join('');
   return `<h2>Week ${m.period} <span class="sub">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}</span></h2>
   <div class="card">
@@ -201,8 +203,9 @@ function matchupCard() {
       <div class="side"><div class="tm">${esc(opp.abbrev)}</div><div class="sc">${n0(m.them.score)}</div><div class="pj">projected ${n0(m.them.projected)}</div></div>
     </div>
     <div class="bar-split"><i class="a" style="width:${(100 * m.me.projected / total).toFixed(1)}%"></i><i class="b" style="width:${(100 * m.them.projected / total).toFixed(1)}%"></i></div>
-    <div class="small muted">${esc(opp.name)}. Starts left: ${m.me.starts} for you, ${m.them.starts} for them.
-      Projected from each side's best daily lineup from here on, counting each player's chance of playing.</div>
+    <div class="small muted">${esc(opp.name)}. Expected starts left: ${n0(m.me.starts)} for you, ${n0(m.them.starts)} for them.
+      Projected from each side's best daily lineups from here on, with only starters scoring: who plays is simulated, and a bench player
+      fills in when a starter sits. Your adds for the week are in the <a href="#" data-goto="week">Week</a> tab.</div>
     ${days ? `<div class="scroll-x"><table class="tbl" style="margin-top:8px"><thead><tr><th>Day</th><th class="r">Your starts</th><th class="r">Points</th><th class="r">Their starts</th><th class="r">Points</th></tr></thead><tbody>${days}</tbody></table></div>` : ''}
   </div>`;
 }
@@ -224,6 +227,105 @@ function lineupCard() {
     <p class="small muted">As ESPN had it at the last refresh. Lineups lock at each game's tip-off; check ESPN before you rely on this.</p>`;
 }
 
+// ----- Week: when to move, what to add, each day's lineup -----
+function gameOn(p, day) {
+  const g = (p.next || []).find(x => x[0] === day);
+  return g ? `${g[2] ? 'vs' : '@'} ${g[1]} ${timeLabel(g[3])}` : '';
+}
+
+function viewWeek() {
+  const d = S.data, W = d.plan;
+  if (!W) return '<div class="empty">This view fills in after the next refresh.</div>';
+  if (!W.days.length) return '<div class="empty">No days left in this matchup week.</div>';
+  const out = [];
+  const games = W.lineups.reduce((a, x) => a + x.games, 0), starts = W.lineups.reduce((a, x) => a + x.starts, 0);
+  const gain = W.points - W.points_now;
+  out.push(`<div class="tiles">
+    <div class="tile"><b>${n0(W.points)}</b><span>points from your starters over the rest of the week${W.moves.length ? ` with the adds below (${signed(gain)})` : ''}</span></div>
+    <div class="tile"><b>${n0(starts)} of ${games}</b><span>expected starts of your players' games left; the rest sit on the bench</span></div>
+    <div class="tile"><b>${W.move_days.length}</b><span>${W.move_days.length === 1 ? 'day' : 'days'} left on which an add still counts this week</span></div>
+  </div>`);
+
+  out.push('<h2>Adds this week</h2>');
+  if (W.moves.length) {
+    for (const m of W.moves) {
+      const p = P(m.id);
+      out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
+        <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, drop ${esc(P(m.drop).name)}</div>
+        <div class="d">${plural(m.games, 'game')} from that day, ${n1(m.starts)} expected to start for you: ${signed(m.gain)} points this week${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}.</div>
+        <div class="who">${pill(m.id, 'add')}${pill(m.drop, 'drop')}</div></div>`);
+    }
+  } else {
+    const s = d.streams && d.streams.list[0];
+    out.push(`<div class="card muted">No add beats holding your roster this week.${s ? ` The best one, ${esc(P(s.id).name)} for ${esc(P(s.drop).name)},
+      adds ${n0(s.gain)} points this week but gives up ${n0(s.ros_cost)} of rest-of-season value.` : ''}</div>`);
+  }
+  out.push(`<p class="small muted">One add a day. An add counts from the next day whose first game has not tipped off (ESPN locks rosters
+    at the day's first game), so each add above has to be made before that day's first tip. Each day takes the best add left for the rest of the
+    week, against your three lowest-valued players or a streamer added earlier; it is re-planned on every refresh.
+    ${W.preseason_add ? 'ESPN may count the days before the opener as one day for the one-add limit, so an add made before the opener can use up opening day\'s.' : ''}</p>`);
+
+  for (const day of W.lineups) {
+    const moves = day.moves.map(m => `<div class="small"><b>Before ${esc(day.first_tip ? timeLabel(day.first_tip) : 'the first game')}:</b> add ${esc(P(m.id).name)}, drop ${esc(P(m.drop).name)}</div>`).join('');
+    const filled = day.slots.filter(r => r[1]);
+    const empty = day.slots.length - filled.length;
+    const rows = filled.map(([slot, id, prob, pts, locked]) => {
+      const p = P(id);
+      return row(p, [['plays', locked ? '–' : Math.round(100 * prob) + '%', '', true], ['exp pts', locked ? 'locked' : n1(pts)]],
+        { prefix: `<span class="chip slot">${esc(slot)}</span> `, meta: esc(gameOn(p, day.date) || (locked ? 'playing' : '')), plain: true });
+    }).join('');
+    const bench = day.bench.map(([id, prob, start]) => {
+      const p = P(id);
+      return row(p, [['plays', Math.round(100 * prob) + '%', '', true], ['starts', Math.round(100 * start) + '%']],
+        { prefix: '<span class="chip slot">BE</span> ', meta: esc(gameOn(p, day.date)) + (prob ? ' · starts only if a starter sits' : ''), plain: true, cls: 'benched' });
+    }).join('');
+    const idle = day.idle.map(id => esc(P(id).name)).join(', ');
+    out.push(`<h2>${esc(dayLabel(day.date))} <span class="sub">${plural(day.games, 'game')} · ${n0(day.points)} expected points${day.date === d.calendar.today ? ' · today' : ''}</span></h2>
+      ${moves}<div class="rows">${rows}${bench}</div>
+      <p class="small muted">${empty ? `${plural(empty, 'slot')} empty. ` : ''}${idle ? 'No game: ' + idle + '.' : ''}</p>`);
+  }
+  out.push(`<p class="small muted">Each day's lineup is the best on expected points with the roster you will have that day, adds included.
+    <b>Plays</b>: his chance of playing. <b>Starts</b>, for bench players: how often he gets into the lineup when you swap in for a starter who sits.
+    Expected points simulate who plays, so they allow for those swaps.</p>`);
+  return out.join('');
+}
+
+// ----- Trades -----
+function viewTrades() {
+  const d = S.data, T = d.trades;
+  if (!T) return '<div class="empty">This view fills in after the next refresh.</div>';
+  const out = [`<p class="lead small">Trades that add to your daily lineups over the rest of the season (playoff weeks count 1.5×), where the other team
+    comes out ahead on <b>ESPN's projections</b>, the numbers ESPN's trade screen shows them, counted above a waiver pickup. 1-for-1, 2-for-1 and 1-for-2:
+    a trade that opens a roster spot fills it with the best free agent, and one that leaves a player too many drops your lowest-valued one.</p>`];
+  out.push(`<div class="banner warn small">These ideas come from where this dashboard and ESPN disagree about a player. The dashboard's numbers start from your
+    draft board, which beat ESPN's list in replays of past drafts but is not yet tested in season. Until a few weeks of games are in, read them as the
+    board's opinion against ESPN's.</div>`);
+  if (!T.list.length) {
+    out.push('<div class="card muted">No trade found that helps you and that the other team should accept.</div>');
+    return out.join('');
+  }
+  const weeks = Math.max(1, T.weeks_left);
+  for (const t of T.list) {
+    const other = team(t.team);
+    const winwin = t.their_gain >= 0;
+    const pills = [...t.give.map(id => pill(id, 'give')), ...t.get.map(id => pill(id, 'get'))];
+    if (t.my_drop) pills.push(pill(t.my_drop, 'then drop'));
+    if (t.my_add) pills.push(pill(t.my_add, 'then add'));
+    out.push(`<div class="card">
+      <div class="t"><b>${esc(other.abbrev)}</b> <span class="muted">${esc(other.name)}</span>${winwin ? ' <span class="chip up" title="They gain on the dashboard\'s numbers too">BOTH GAIN</span>' : ''}</div>
+      <div class="who" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${pills.join('')}</div>
+      <div class="tiles">
+        <div class="tile"><b class="pos">${signed(t.gain)}</b><span>season points for you, about ${signed(t.gain / weeks)} a week</span></div>
+        <div class="tile"><b>${signed(t.their_espn)}</b><span>for them on ESPN's projections</span></div>
+        <div class="tile"><b class="${t.their_gain >= 0 ? '' : 'down'}">${signed(t.their_gain)}</b><span>for them on the dashboard's numbers</span></div>
+      </div></div>`);
+  }
+  out.push(`<p class="small muted">Your gain is the change in points from your best daily lineups for the rest of the season, simulated as on the Week tab.
+    No one is racing you for a trade, so these are optional; every week you wait is a week of the gain gone${T.deadline ? `. Trade deadline: ${esc(new Date(T.deadline * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: TZ }))} ET` : ''}.
+    One player of yours appears in at most three ideas.</p>`);
+  return out.join('');
+}
+
 // ----- Roster -----
 function viewRoster() {
   const seg = [['values', 'Values'], ['vs', 'Actual vs projected'], ['news', 'News']]
@@ -238,16 +340,37 @@ function viewValues() {
   const ir = entries.filter(e => e.slot === 'IR').length;
   const rows = entries.map(e => {
     const p = P(e.id);
-    return row(p, [['ROS', n1(p.ros.fppg)], ['wk G', p.week.games, '', true], ['games', n1(p.ros.games), '', true], ['value', n0(p.ros.value)]],
+    const lu = p.lineup;
+    return row(p, [['ROS', n1(p.ros.fppg)], ['wk starts', lu ? `${n1(lu.week_starts)}/${lu.week_games}` : '–', '', true],
+      ['starts', lu ? n0(lu.starts) : '–', '', true], ['value', n0(p.ros.value)]],
       { prefix: `<span class="chip slot${e.slot === 'IR' ? ' ir' : ''}">${esc(e.slot)}</span> `, meta: meta(p) + ' · ' + esc(nextGame(p)),
         note: injuryNote(p), plain: true });
   }).join('');
   const drops = d.drop_order.slice(0, 4).map(id => esc(P(id).name)).join(', ');
   return `<h2>Your roster <span class="sub">${entries.length} players · IR ${ir}/${d.league.ir_slots}</span></h2>
     <div class="rows">${rows}</div>
-    <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk G</b>: games left this matchup week.
-    <b>Games</b>: games he is expected to play from here. <b>Value</b>: points above a waiver pickup over the rest of the season, playoff weeks counting 1.5×.
+    ${lineupTotals(entries)}
+    <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk starts</b>: expected starts in your lineup over
+    the rest of this matchup week, out of his games left. <b>Starts</b>: expected starts from here to the end of the season if you hold this roster;
+    only starters score, so this is his games less the ones he would sit on your bench. Players in IR are left out.
+    <b>Value</b>: points above a waiver pickup over the rest of the season, playoff weeks counting 1.5×.
     Lowest value first: ${drops}.</p>`;
+}
+
+function lineupTotals(entries) {
+  const t = team(me()).outlook;
+  if (!t) return '';
+  let games = 0, starts = 0, wg = 0, ws = 0;
+  for (const e of entries) {
+    const p = P(e.id), lu = p.lineup;
+    if (!lu) continue;
+    games += p.ros.games; starts += lu.starts; wg += lu.week_games; ws += lu.week_starts;
+  }
+  return `<div class="tiles">
+    <div class="tile"><b>${n0(t.points)}</b><span>points from your starters over the rest of the season, about ${n0(t.per_week)} a week</span></div>
+    <div class="tile"><b>${n0(starts)} of ${n0(games)}</b><span>expected starts of expected games; the rest sit on your bench</span></div>
+    <div class="tile"><b>${n1(ws)} of ${wg}</b><span>starts of games left this week</span></div>
+  </div>`;
 }
 
 const FLAGS = {
@@ -369,10 +492,10 @@ function waiverList() {
     const st = d.streams;
     if (!st.days.length) return `<div class="empty">No days left in this matchup week.</div>`;
     const list = st.list.filter(r => passes(P(r.id)));
-    return `<p class="lead small">Best single pickup for the rest of this week (${st.days.map(dayShort).join(', ')}): what he adds to your daily lineups, against
+    return `<p class="lead small">Best single pickup for the rest of this week (${st.days.map(dayShort).join(', ')}): what he adds to your daily lineups (<b>starts</b>: games he would start for you), against
       the best of your ${3} lowest-valued players to drop. <b>Cost</b> is rest-of-season value given up, if the dropped player is worth more.
       Only free agents you can add right away are listed.</p>
-      <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
+      <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
         { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>`;
   }
   // trending
@@ -403,7 +526,7 @@ function viewLeague() {
   const d = S.data, lg = d.league;
   const teams = Object.values(lg.teams).sort((a, b) => (b.record.w - a.record.w) || (b.record.pf - a.record.pf));
   const standings = teams.map((t, i) => `<tr class="${t.id === me() ? 'mine' : ''}"><td>${i + 1}</td><td><b>${esc(t.abbrev)}</b> <span class="muted">${esc(t.name)}</span></td>
-    <td class="r">${t.record.w}-${t.record.l}${t.record.t ? '-' + t.record.t : ''}</td><td class="r">${n0(t.record.pf)}</td><td class="r">${n0(t.record.pa)}</td><td class="r">${t.waiver_rank || '–'}</td></tr>`).join('');
+    <td class="r">${t.record.w}-${t.record.l}${t.record.t ? '-' + t.record.t : ''}</td><td class="r">${n0(t.record.pf)}</td><td class="r">${n0(t.record.pa)}</td><td class="r">${t.outlook ? n0(t.outlook.per_week) : '–'}</td><td class="r">${t.waiver_rank || '–'}</td></tr>`).join('');
   const week = d.calendar.week;
   const games = lg.matchups.filter(m => week != null && m.period === week + 1).map(m =>
     `<tr class="${[m.home, m.away].includes(me()) ? 'mine' : ''}"><td>${esc(abbr(m.home))}</td><td class="r">${n0(m.home_pts)}</td><td class="r">${n0(m.away_pts)}</td><td>${esc(abbr(m.away))}</td></tr>`).join('');
@@ -414,7 +537,8 @@ function viewLeague() {
     if (t.trade.length) what.push('trade: ' + t.trade.map(([id, f, to]) => esc((P(id) || { name: '#' + id }).name) + ' to ' + esc(abbr(to))).join(', '));
     return `<tr class="${t.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(t.team))}</b> ${what.join('; ')}</td></tr>`;
   }).join('');
-  return `<h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r">PF</th><th class="r">PA</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
+  return `<h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r">PF</th><th class="r">PA</th><th class="r" title="Points a week from each roster's best daily lineups over the rest of the season, as it stands">Proj/wk</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
+    <p class="small muted"><b>Proj/wk</b>: points a week each roster's starters should score over the rest of the season if it is held as is (players in IR left out).</p>
     ${games ? `<h2>This week</h2><div class="card scroll-x"><table class="tbl"><tbody>${games}</tbody></table></div>` : ''}
     <h2>Recent moves <span class="sub">last four days</span></h2><div class="card scroll-x">${tx ? `<table class="tbl"><tbody>${tx}</tbody></table>` : '<div class="muted">No adds, drops or trades yet.</div>'}</div>
     <p class="small muted" style="margin-top:20px">Values start from the draft board (${esc(d.model.priors_from || '?')}) and move toward each player's actual scoring as games come in. Refreshed every 20 minutes from ESPN.
@@ -452,8 +576,10 @@ function openPlayer(id) {
     <div class="sec"><div class="h">Rest of season</div><dl class="kv">
       <dt>Per game</dt><dd><b>${n1(r.fppg)}</b> · ${prior}</dd>
       <dt>Games</dt><dd>${n1(r.games)} expected of ${r.team_games} left${r.absent ? ` · ${n1(r.absent)} missed while Out` : ''} · ${n1(r.playoff_games)} in the playoff weeks</dd>
+      ${p.lineup ? `<dt>Starts</dt><dd><b>${n0(p.lineup.starts)}</b> expected in your lineup, ${n0(p.lineup.points)} points from them</dd>` : ''}
       <dt>Value</dt><dd><b>${n0(r.value)}</b> points above a waiver pickup${r.bar ? ` (break-even ${n1(r.bar)} per game)` : ''}</dd>
-      <dt>This week</dt><dd>${plural(p.week.games, 'game')}, ${n1(p.week.points)} expected points</dd></dl></div>
+      <dt>This week</dt><dd>${p.lineup ? `${plural(p.lineup.week_games, 'game')}, ${n1(p.lineup.week_starts)} expected starts, ${n1(p.lineup.week_points)} points from them`
+        : `${plural(p.week.games, 'game')}, ${n1(p.week.points)} expected points if he starts them all`}</dd></dl></div>
     ${sched ? `<div class="sec"><div class="h">Next games</div><table class="tbl"><thead><tr><th>Day</th><th>Game</th><th>Tip</th><th class="r">Plays</th></tr></thead><tbody>${sched}</tbody></table></div>` : ''}
     ${statRows ? `<div class="sec"><div class="h">Fantasy points</div><table class="tbl"><thead><tr><th></th><th class="r">GP</th><th class="r">Min</th><th class="r">Per game</th></tr></thead><tbody>${statRows}</tbody></table></div>` : ''}
     ${recent ? `<div class="sec"><div class="h">Latest games</div><table class="tbl"><thead><tr><th>Day</th><th class="r">Min</th><th class="r">Points</th></tr></thead><tbody>${recent}</tbody></table></div>` : ''}
@@ -568,8 +694,9 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],[data-goto],#lock-now');
     if (!t) return;
+    if (t.dataset.goto) { e.preventDefault(); S.tab = t.dataset.goto; setItem('hq.tab', S.tab); render(); window.scrollTo(0, 0); return; }
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
     if (t.dataset.rtab != null) { S.rtab = t.dataset.rtab; setItem('hq.rtab', S.rtab); render(); return; }

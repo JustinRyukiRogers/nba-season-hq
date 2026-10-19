@@ -10,6 +10,7 @@
                charged, since an IR slot can hold him.
 """
 import math
+import random
 import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -39,6 +40,7 @@ REPLACEMENT_FA_RANK = 6      # replacement level: the 6th-best healthy free agen
 FULL_SEASON = 82
 OUT_TAGS = {"OUT", "SUSPENSION", "INJURY_RESERVE"}
 CAL_FLAGS = ("old", "young", "new_team", "inj_return", "rookie")
+LINEUP_SAMPLES = 200         # simulated days of who-plays when more players have games than slots
 
 
 def et_date(epoch_s):
@@ -68,6 +70,10 @@ class Calendar:
         self.regular = regular_weeks
         self.cup = fantasy_calendar.cup_week(dates, self.weeks)
         self.scheduled = {t: len(gs) for t, gs in self.by_team.items()}
+        self.by_day = {(t, g["date"]): g for t, gs in self.by_team.items() for g in gs}
+
+    def game_on(self, team, day):
+        return self.by_day.get((team, day))
 
     def week_of(self, day):
         for i, (lo, hi) in enumerate(self.weeks):
@@ -103,6 +109,14 @@ class Calendar:
         d = max(lo, self.today)
         out = []
         while d <= hi:
+            out.append(d)
+            d += timedelta(days=1)
+        return out
+
+    def days_left(self):
+        """Every day from today (or opening night) to the end of the fantasy season."""
+        d, out = max(self.start, self.today), []
+        while d <= self.end:
             out.append(d)
             d += timedelta(days=1)
         return out
@@ -289,23 +303,70 @@ def replacement_level(free_agents):
     return healthy[min(len(healthy) - 1, REPLACEMENT_FA_RANK - 1)]
 
 
-def project_days(pids, days, players, slots, calendar, now=None):
-    """Expected points from a roster's best daily lineups over `days`, counting only games not yet
-    tipped off. -> (points, [(day, points, starters)])."""
+_draws = {}
+
+
+def draws(day, pid, n):
+    """n fixed uniform draws for one player on one day: the same on every refresh, and shared by
+    every roster he is tried on, so comparing two rosters is not swamped by sampling noise."""
+    key = (day, pid)
+    u = _draws.get(key)
+    if u is None or len(u) < n:
+        rng = random.Random("%s:%s" % (day, pid))
+        u = _draws[key] = [rng.random() for _ in range(n)]
+    return u
+
+
+def lineup_day(cands, slots, day, samples=LINEUP_SAMPLES):
+    """One day's starts. cands: [(pid, chance he plays, points per game, eligible slots)].
+    The manager sets the lineup knowing who plays (lineups lock per game, after the injury news),
+    so the day is simulated: who plays is drawn, the best lineup of those is started. With
+    samples=0, the lineup is picked on expected points instead (quicker, for screening).
+    -> (expected points, {pid: expected starts})."""
+    if not cands:
+        return 0.0, {}
+    owner, _ = best_lineup([(c[0], 1.0, c[3]) for c in cands], slots)
+    if len(owner) == len(cands):              # all of them fit: whoever plays starts
+        return sum(c[1] * c[2] for c in cands), {c[0]: c[1] for c in cands}
+    if not samples:
+        owner, pts = best_lineup([(c[0], c[1] * c[2], c[3]) for c in cands], slots)
+        on = set(owner.values())
+        return pts, {c[0]: c[1] for c in cands if c[0] in on}
+    order = sorted(cands, key=lambda c: -c[2])
+    u = {c[0]: draws(day, c[0], samples) for c in cands}
+    total, starts = 0.0, defaultdict(float)
+    for i in range(samples):
+        owner, pts = best_lineup([(c[0], c[2], c[3]) for c in order if u[c[0]][i] < c[1]], slots)
+        total += pts
+        for pid in owner.values():
+            starts[pid] += 1
+    return total / samples, {pid: n / samples for pid, n in starts.items()}
+
+
+def project_days(pids, days, players, slots, calendar, now=None, samples=LINEUP_SAMPLES, weighted=False):
+    """A roster's best daily lineups over `days`, counting only games not yet tipped off.
+    -> (points, [(day, points, expected starts)], {pid: [expected starts, points from starts]}).
+    weighted: playoff-week points count PLAYOFF_WEEK_WEIGHT times, as in the values."""
     now = now or calendar.now
-    total, per_day = 0.0, []
+    total, per_day, by_player = 0.0, [], defaultdict(lambda: [0.0, 0.0])
     for day in days:
         cands = []
         for pid in pids:
             p = players.get(pid)
             if not p:
                 continue
-            g = next((g for g in calendar.by_team.get(p["team"], []) if g["date"] == day), None)
+            g = calendar.game_on(p["team"], day)
             if not g or g["tip"] <= now:
                 continue
             prob = p["odds"].get(str(day), 0.0)
-            cands.append((pid, prob * p["ros"]["fppg"], p["slots"]))
-        owner, pts = best_lineup(cands, slots)
-        total += pts
-        per_day.append((str(day), round(pts, 1), len(owner)))
-    return total, per_day
+            if prob > 0:
+                cands.append((pid, prob, p["ros"]["fppg"], p["slots"]))
+        pts, starts = lineup_day(cands, slots, str(day), samples)
+        w = calendar.weight(calendar.week_of(day)) if weighted else 1.0
+        total += w * pts
+        fppg = {c[0]: c[2] for c in cands}
+        for pid, s in starts.items():
+            by_player[pid][0] += s
+            by_player[pid][1] += s * fppg[pid]
+        per_day.append((str(day), round(pts, 1), round(sum(starts.values()), 1)))
+    return total, per_day, dict(by_player)

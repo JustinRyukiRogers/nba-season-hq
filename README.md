@@ -16,8 +16,13 @@ passphrase, which is `SITE_PASSPHRASE` in `.env`).
   and any deadline: **Do now** (it costs points or blocks you today), **Soon** (a deadline such as
   a waiver run, or others may get there first), **Optional** (a small gain, or no one is racing
   you), **FYI**. Then the matchup: score, projection from both sides' best daily lineups, starts left.
-- **Roster**: three views. *Values*: slot, status, next game, games this week, rest-of-season
-  points per game, value. *Actual vs projected*: each player's points per game and minutes this
+- **Week**: the rest of the matchup week day by day. The adds worth making and the deadline for
+  each (one a day, counting from that day's first tip-off), then each day's lineup with the roster
+  you will have that day: who starts in which slot, who sits and how often he gets in when a
+  starter sits, who has no game.
+- **Roster**: three views. *Values*: slot, status, next game, expected starts this week (of his
+  games left) and for the rest of the season, rest-of-season points per game, value; above it,
+  your starters' projected points and starts against games. *Actual vs projected*: each player's points per game and minutes this
   season next to the draft board's projection and ESPN's, the gap, the number the dashboard now
   uses, and HOT/COLD (8+ games, 15% off) and MIN ▲/▼ (3+ games, 4+ minutes off) flags; above it,
   the team's points against projection, and a league-wide check of whether the board or ESPN is
@@ -25,9 +30,12 @@ passphrase, which is `SITE_PASSPHRASE` in `.env`).
 - **Waivers**: best adds (value against your weakest player), IR stashes (free agents tagged Out,
   so IR-eligible, ranked by what they add once back), streams for the rest of the week (points
   added to your daily lineups, minus any long-term value given up), and ESPN-wide trending adds.
+- **Trades**: 1-for-1, 2-for-1 and 1-for-2 trades with each team that add to your simulated
+  lineups over the rest of the season and that the other team wins on ESPN's projections
+  (counted above a waiver pickup, which is what stops two middling players looking like a star).
 - **Injuries**: everyone hurt that a team holds or might add, with ESPN's return estimate, and
   for longer absences the free agents at his positions on his NBA team.
-- **League**: standings, this week's scores, adds and drops of the last four days.
+- **League**: standings with each roster's projected points a week from its starters, this week's scores, adds and drops of the last four days.
 
 Tap any player for his card: injury report, how his value is built, next games with the chance
 he plays each, fantasy points by period, news.
@@ -85,6 +93,14 @@ Actions > refresh and press "Enable workflow".
    (playoff weeks 1.5x, a bust can be dropped). The replacement level is real here: the
    6th-best healthy free agent in this league.
 
+4. Starts: only starters score, so team projections, the matchup, the week plan, streams and
+   trades come from simulated daily lineups (`lineup_day` in `seasonkit/model.py`): each day,
+   who plays is drawn from each player's chance of playing, and the best legal lineup of those
+   starts, the way you would set it after the injury news. Days when everyone with a game fits
+   need no simulation. The draws are fixed per player and day, so numbers do not jitter between
+   refreshes and two rosters are compared on the same luck. Late scratches after a lineup locks
+   are not modelled, so this slightly flatters deep benches.
+
 `data/season_notes.json` overrides a return date, games share or per-game number for a player.
 
 ### Not yet checked
@@ -96,7 +112,9 @@ player in IR blocks adds. Whether ESPN lets you add an Out player straight into 
 when the bench is full is not confirmed; the stash advice allows for either. Nor is whether
 ESPN counts the days before the opener as one scoring day for the 1-add-a-day limit. Streams
 assume an add made after the day's first tip-off counts from the next day. The HOT/COLD and
-MIN flags are display rules of thumb, not fitted.
+MIN flags are display rules of thumb, not fitted. The week plan is greedy (each day takes the
+best add left), and trade ideas lean entirely on the gap between the dashboard's numbers and
+ESPN's, which is untested in season.
 
 # The draft kit
 

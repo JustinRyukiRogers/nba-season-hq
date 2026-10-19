@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -186,6 +186,92 @@ def test_encryption_round_trip():
     out = subprocess.run([node, "-e", check], check=True, capture_output=True, text=True).stdout
     assert json.loads(out) == json.loads(src.read_text()), "the browser's decryption reads what the encrypter wrote"
     shutil.rmtree(tmp)
+
+
+class FakeCal:
+    """A small fantasy calendar: one matchup week of `days` days from `start`, games given per team."""
+
+    def __init__(self, start, days, games, now=0):
+        self.start, self.today, self.now = start, start, now
+        self.end = start + timedelta(days=days - 1)
+        self.weeks, self.regular = [(start, self.end)], 1
+        self.by_team = {t: [{"date": start + timedelta(days=i), "tip": 10_000 + 86400 * i, "opp": "XXX", "home": True}
+                            for i in idx] for t, idx in games.items()}
+
+    def game_on(self, team, day):
+        return next((g for g in self.by_team.get(team, []) if g["date"] == day), None)
+
+    def week_of(self, day):
+        return 0
+
+    def weight(self, week):
+        return 1.0
+
+    def current_week(self):
+        return 0
+
+    def days_left_in_week(self, week=None):
+        return [self.start + timedelta(days=i) for i in range((self.end - self.start).days + 1)]
+
+    def days_left(self):
+        return self.days_left_in_week()
+
+    def first_tip(self, day):
+        tips = [g["tip"] for gs in self.by_team.values() for g in gs if g["date"] == day]
+        return min(tips) if tips else None
+
+
+def test_lineup_day():
+    slots = ["PG", "C"]
+    pts, starts = model.lineup_day([(1, 0.5, 30.0, ["PG"]), (2, 1.0, 20.0, ["C"])], slots, "2026-11-01")
+    assert pts == 35.0 and starts == {1: 0.5, 2: 1.0}, "when everyone fits, whoever plays starts"
+    # three point guards for one PG slot: the backup starts only when the first choice sits
+    cands = [(1, 0.5, 30.0, ["PG"]), (2, 1.0, 20.0, ["PG"]), (3, 1.0, 10.0, ["PG"])]
+    pts, starts = model.lineup_day(cands, ["PG"], "2026-11-01", samples=2000)
+    assert abs(starts[1] - 0.5) < 0.04 and abs(starts[2] - 0.5) < 0.04 and 3 not in starts, starts
+    assert abs(pts - 25.0) < 1.0, "a bench player fills in when the starter sits: %.1f" % pts
+    ev, _ = model.lineup_day(cands, ["PG"], "2026-11-01", samples=0)
+    assert ev == 20.0, "picked on expected points, the sure 20 beats a coin flip at 30, with no fill-in"
+    again, _ = model.lineup_day(cands, ["PG"], "2026-11-01", samples=2000)
+    assert again == pts, "the same draws on every run"
+
+
+def test_week_plan_and_move_days():
+    start = date(2026, 11, 2)
+    cal = FakeCal(start, 4, {"BOS": [0, 1, 2, 3], "LAL": [1, 3], "MIA": [0, 2]}, now=10_000 + 60)   # day 0 has tipped
+    players = {1: player(1, team="LAL", value=50.0, fppg=20.0), 2: player(2, team="MIA", value=300.0, fppg=40.0),
+               9: player(9, team="BOS", owner=0, fa="FREEAGENT", value=45.0, fppg=30.0)}
+    for p in players.values():
+        p["odds"] = {str(g["date"]): 1.0 for g in cal.by_team[p["team"]]}
+    lg = league_with([(1, "UT"), (2, "UT")])
+    lg["starting"], lg["acq"] = ["UT", "UT"], {"per_day": True}
+    lg["teams"]["3"]["adds"] = {}
+    assert advice.move_days(lg, cal, 3, []) == [start + timedelta(days=i) for i in (1, 2, 3)], "today's first game has tipped"
+    plan = advice.week_plan(lg, players, 3, cal, [])
+    m = plan["moves"][0]
+    assert (m["id"], m["drop"], m["day"]) == (9, 1, str(start + timedelta(days=1))), m
+    assert m["gain"] == 3 * 30.0 - 2 * 20.0 and m["ros_cost"] == 5.0, m
+    day1 = plan["lineups"][1]
+    assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
+    assert plan["points"] == plan["points_now"] + m["gain"]
+    cal.now = 0
+    txs = [{"team": 3, "adds": [5], "at": int(datetime(2026, 11, 2, 9, tzinfo=model.ET).timestamp())}]
+    assert advice.move_days(lg, cal, 3, txs)[0] == start + timedelta(days=1), "today's one add is used up"
+
+
+def test_trade_helpers():
+    players = {i: player(i, value=v) for i, v in ((1, 10.0), (2, 50.0), (3, 80.0), (8, 5.0))}
+    val = lambda pid: players[pid]["ros"]["value"]
+    assert advice.after_trade([1, 2, 3], [3], [10, 11], players | {10: player(10), 11: player(11)}, val, 8) == [2, 10, 11], \
+        "two for one: the lowest-valued player you keep is dropped"
+    assert advice.after_trade([1, 2, 3], [2, 3], [10], players | {10: player(10)}, val, 8) == [1, 10, 8], \
+        "one for two: the best free agent fills the open spot"
+    star, mid = player(20, fppg=55.0), player(21, fppg=34.0)
+    star["stats"], mid["stats"] = {"proj": [70, 35, 60.0]}, {}
+    star["ros"]["games"] = mid["ros"]["games"] = 60.0
+    assert advice.espn_value(star, 25.0) == 35.0 * 60 and advice.espn_value(mid, 25.0) == 9.0 * 60, \
+        "ESPN's per-game number when it has one, above a waiver pickup"
+    assert advice.espn_value(star, 25.0) > 2 * advice.espn_value(mid, 25.0), "two middling players are not a star"
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ a { color: var(--accent-ink); }
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
-  .tabs button { flex: 1; padding: 8px 2px; font-size: 13px; }
+  .tabs button { flex: 1; padding: 8px 1px; font-size: 12px; min-width: 0; }
   #main { padding-bottom: 76px; }
 }
 
@@ -167,6 +167,7 @@ p.lead { color: var(--ink-2); margin: 4px 0 10px; }
 .row:first-child { border-top: 0; }
 .row:hover { background: var(--wash); }
 .row.mine { background: var(--mine); }
+.row.benched { background: var(--wash); }
 .row .who { min-width: 0; }
 .row .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

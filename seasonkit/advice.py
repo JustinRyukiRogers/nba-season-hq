@@ -4,13 +4,25 @@ each one is, and how your players are doing against their projections.
 Everything here reads the normalized league and the valued players from build.py and returns
 plain data for the page. Nothing writes to ESPN.
 """
+from collections import defaultdict
 from datetime import datetime, timedelta
+from itertools import combinations
 
-from .model import ET, best_lineup, parse_day, project_days
+from .model import ET, REPLACEMENT_FA_RANK, best_lineup, et_date, lineup_day, parse_day, project_days
 
 STREAM_DROPS = 3          # drop candidates tried for each stream: your lowest-valued players
 STREAM_POOL = 40          # free agents tried as streams, by expected points this week
 LINEUP_MIN_GAIN = 0.5     # expected points before a lineup change is worth suggesting
+PLAN_MIN_NET = 10.0       # points this week, net of rest-of-season value given up, before an add is planned
+
+# Trade ideas: a quick screen on rest-of-season value, then the best few per team re-scored with
+# the lineup simulation for both sides.
+TRADE_SCREEN_FLOOR = -50.0   # value change a trade may show and still be tried (consolidation can beat it)
+TRADE_SCREEN = 25            # trades per team re-scored
+TRADE_SAMPLES = 60           # simulated days per lineup; every trade is scored on the same draws
+TRADE_MIN_GAIN = 100.0       # rest-of-season lineup points (playoff weeks 1.5x) before a trade is listed
+TRADE_SHOW, TRADE_PER_TEAM, TRADE_PER_PLAYER = 10, 3, 3
+TRADE_ACTION_GAIN = 250.0    # a trade idea this good goes on the to-do list
 
 # How urgent a to-do is. now: it costs points or blocks you today. soon: it has a deadline, or
 # someone may get there first. optional: a small gain, or no one is racing you. fyi: nothing to do.
@@ -178,43 +190,269 @@ def stash(league, players, me, free_ir, top=12):
             "list": [{"id": p["id"], "back": p["ros"]["back"], "games_after": p["ros"]["games"]} for p in rows[:top]]}
 
 
-def streams(league, players, me, calendar, top=10):
-    """Best single add for the rest of this matchup week: the points it adds to your daily lineups,
-    against what dropping your weakest players gives up. Adds count from tomorrow once today's first
-    game has tipped off (conservative: rosters lock at the day's first game)."""
+# ---------- this week: when you can make a move, what to add, each day's lineup ----------
+
+def my_adds_today(txs, me, calendar):
+    return any(t["team"] == me and t["adds"] and et_date(t["at"]) == calendar.today for t in txs)
+
+
+def week_days(calendar):
+    """Days left in this matchup week (opening week before the season starts)."""
     week = calendar.current_week()
     if week is None:
-        return {"days": [], "list": []}
-    days = calendar.days_left_in_week(week)
-    first = calendar.first_tip(calendar.today)
-    if days and days[0] == calendar.today and (calendar.today < calendar.start or (first and calendar.now >= first)):
-        days = days[1:]
-    days = [d for d in days if d >= calendar.start]
-    starting = league["starting"]
-    mine = [e["id"] for e in roster(league, me, include_ir=False)]
-    base, _ = project_days(mine, days, players, starting, calendar)
-    drops = sorted((pid for pid in mine if pid in players and players[pid].get("droppable", True)),
-                   key=lambda pid: players[pid]["ros"]["value"])[:STREAM_DROPS]
+        return []
+    return [d for d in calendar.days_left_in_week(week) if d >= calendar.start]
 
-    def week_points(p):
+
+def move_days(league, calendar, me, txs=()):
+    """Days left this week on which an add still counts. An add counts from the next day whose
+    first game has not tipped off (conservative: ESPN locks rosters at the day's first game), and
+    with one add a day, today is gone once you have used it."""
+    days = week_days(calendar)
+    if days and days[0] == calendar.today:
+        first = calendar.first_tip(calendar.today)
+        if (first and calendar.now >= first) or (league["acq"].get("per_day") and my_adds_today(txs, me, calendar)):
+            days = days[1:]
+    return days
+
+
+def add_options(ids, days, pool, players, starting, calendar, streamers=()):
+    """Every free agent in `pool` tried in place of each of your lowest-valued players (and any
+    streamer added earlier), over `days` of simulated daily lineups. -> (points now, [row for each
+    free agent's best drop, best first]). net = points gained this week minus the rest-of-season
+    value given up when the player dropped is worth more."""
+    base, _, _ = project_days(ids, days, players, starting, calendar)
+
+    def horizon_points(p):
         return sum(p["odds"].get(str(d), 0.0) for d in days) * p["ros"]["fppg"]
 
-    pool = sorted((p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]),
-                  key=lambda p: -week_points(p))[:STREAM_POOL]
+    cands = sorted(pool, key=lambda p: -horizon_points(p))[:STREAM_POOL]
+    drops = sorted((pid for pid in ids if players[pid].get("droppable", True)),
+                   key=lambda pid: players[pid]["ros"]["value"])[:STREAM_DROPS]
+    drops += [pid for pid in streamers if pid in ids and pid not in drops]
     best = {}
-    for c in pool:
+    for c in cands:
         for x in drops:
-            alt, _ = project_days([pid for pid in mine if pid != x] + [c["id"]], days, players, starting, calendar)
+            alt, _, by = project_days([pid for pid in ids if pid != x] + [c["id"]], days, players, starting, calendar)
             gain = alt - base
             cost = max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
             row = {"id": c["id"], "drop": x, "gain": round(gain, 1), "ros_cost": round(cost, 1),
-                   "net": round(gain - cost, 1),
-                   "games": sum(1 for d in days if str(d) in c["odds"])}
+                   "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
+                   "starts": round(by.get(c["id"], [0.0])[0], 1)}
             if c["id"] not in best or row["net"] > best[c["id"]]["net"]:
                 best[c["id"]] = row
-    rows = sorted(best.values(), key=lambda r: -r["net"])
+    return base, sorted(best.values(), key=lambda r: -r["net"])
+
+
+def streams(league, players, me, calendar, txs=(), top=10):
+    """Best single add for the rest of this matchup week, from the first day an add still counts."""
+    days = move_days(league, calendar, me, txs)
+    if not days:
+        return {"days": [], "list": []}
+    ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
+    pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
+    base, rows = add_options(ids, days, pool, players, league["starting"], calendar)
     return {"days": [str(d) for d in days], "base": round(base, 1), "list": [r for r in rows if r["gain"] > 0][:top]}
 
+
+def week_plan(league, players, me, calendar, txs=()):
+    """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
+    counting from the day's first tip-off), and the lineup to set each day with the roster you
+    will have then. Each day takes the best add left for the rest of the week, so a streamer
+    added early can make way for another later. Re-planned on every refresh."""
+    days = week_days(calendar)
+    if not days or calendar.today > calendar.end:
+        return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
+    starting = league["starting"]
+    can_move = set(move_days(league, calendar, me, txs))
+    acq = league["acq"]
+    cap = len(days) if acq.get("per_day") or not acq.get("limit") else max(
+        0, int(acq["limit"]) - int((league["teams"][str(me)]["adds"] or {}).get(str(calendar.current_week() + 1), 0)))
+    ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
+    held = list(ids)
+    used, streamers, moves = set(ids), [], []
+    for i, d in enumerate(days):
+        if d not in can_move or len(moves) >= cap:
+            continue
+        pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"] and p["id"] not in used]
+        _, rows = add_options(held, days[i:], pool, players, starting, calendar, streamers)
+        if not rows or rows[0]["net"] < PLAN_MIN_NET:
+            continue
+        m = dict(rows[0], day=str(d), by=calendar.first_tip(d))
+        moves.append(m)
+        held = [pid for pid in held if pid != m["drop"]] + [m["id"]]
+        used |= {m["id"], m["drop"]}
+        streamers.append(m["id"])
+
+    lineups, total, rosters = [], 0.0, list(ids)
+    locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False)}
+    for d in days:
+        for m in moves:
+            if m["day"] == str(d):
+                rosters = [pid for pid in rosters if pid != m["drop"]] + [m["id"]]
+        day = day_lineup(rosters, d, players, starting, calendar, locked if d == calendar.today else {})
+        day["moves"] = [m for m in moves if m["day"] == str(d)]
+        total += day["points"]
+        lineups.append(day)
+    now_pts, _, _ = project_days(ids, days, players, starting, calendar)
+    return {"days": [str(d) for d in days], "moves": moves, "lineups": lineups, "points": round(total, 1),
+            "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
+            "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day"))}
+
+
+def day_lineup(ids, day, players, starting, calendar, slots_now):
+    """The lineup to set on one day: the best by expected points among players whose game has not
+    tipped off (slots_now: today's ESPN slots, which hold for anyone already locked). The points
+    are simulated, allowing for swapping in a bench player when a starter sits."""
+    now = calendar.now
+    locked, cands, idle = [], [], []
+    for pid in ids:
+        p = players.get(pid)
+        g = calendar.game_on(p["team"], day) if p else None
+        if not g:
+            idle.append(pid)
+        elif g["tip"] <= now:
+            if slots_now.get(pid) in starting:
+                locked.append((slots_now[pid], pid))
+        else:
+            cands.append((pid, p["odds"].get(str(day), 0.0), p["ros"]["fppg"], p["slots"], g))
+    open_slots = list(starting)
+    for s, _ in locked:
+        open_slots.remove(s)
+    owner, _ = best_lineup([(c[0], c[1] * c[2], c[3]) for c in cands], open_slots)
+    pts, starts = lineup_day([c[:4] for c in cands if c[1] > 0], open_slots, str(day))
+    info = {c[0]: c for c in cands}
+    rows = [[s, pid, None, None, True, None] for s, pid in locked]
+    for i, s in enumerate(open_slots):
+        pid = owner.get(i)
+        c = info.get(pid)
+        rows.append([s, pid, round(c[1], 2) if c else None, round(c[1] * c[2], 1) if c else None, False,
+                     c[4]["tip"] if c else None])
+    rows.sort(key=lambda r: starting.index(r[0]))
+    chosen = set(owner.values())
+    bench = sorted(([c[0], round(c[1], 2), round(starts.get(c[0], 0.0), 2), c[4]["tip"]] for c in cands if c[0] not in chosen),
+                   key=lambda b: -b[1])
+    return {"date": str(day), "first_tip": calendar.first_tip(day), "points": round(pts, 1), "slots": rows,
+            "bench": bench, "idle": idle, "games": len(cands) + len(locked),
+            "starts": round(sum(starts.values()) + len(locked), 1)}
+
+
+def lineup_outlook(ids, players, starting, calendar):
+    """Expected starts, not games, for the players you hold: this week and the rest of the season
+    if you keep this roster. -> {pid: {...}}, season points, season points with playoff weeks
+    weighted."""
+    week = week_days(calendar)
+    _, _, wk = project_days(ids, week, players, starting, calendar)
+    rest = calendar.days_left()
+    pts, _, ros = project_days(ids, rest, players, starting, calendar)
+    out = {}
+    for pid in ids:
+        p = players[pid]
+        out[pid] = {"week_games": sum(1 for d in week if str(d) in p["odds"]),
+                    "week_starts": round(wk.get(pid, [0, 0])[0], 1), "week_points": round(wk.get(pid, [0, 0])[1], 1),
+                    "starts": round(ros.get(pid, [0, 0])[0], 1), "points": round(ros.get(pid, [0, 0])[1])}
+    return out, pts
+
+
+# ---------- trades ----------
+
+def espn_per_game(p):
+    proj = p["stats"].get("proj")
+    return proj[2] if proj and proj[0] else p["ros"]["fppg"]
+
+
+def espn_value(p, replacement):
+    """Rest-of-season worth as other managers see it: ESPN's per-game projection (what its trade
+    screen shows), above a waiver pickup's, over the games he is expected to play. Counting above
+    a pickup is what makes two middling players worth less than one star: the second one takes a
+    roster spot a pickup could fill."""
+    return (espn_per_game(p) - replacement) * p["ros"]["games"]
+
+
+def after_trade(team, give, get, players, key, refill):
+    """A roster after a trade, back to its size: an opened spot goes to the best free agent, and
+    one player too many means dropping the lowest by `key` (not one just received)."""
+    new = [pid for pid in team if pid not in give] + list(get)
+    while len(new) > len(team):
+        pool = [pid for pid in new if pid not in get and players[pid].get("droppable", True)] or new
+        new.remove(min(pool, key=key))
+    if len(new) < len(team) and refill and refill not in new:
+        new.append(refill)
+    return new
+
+
+def trade_ideas(league, players, me, calendar):
+    """Trades with each other team that add to your simulated daily lineups over the rest of the
+    season (playoff weeks 1.5x), and that the other manager should accept on the numbers they see:
+    ESPN's projections, counted above a waiver pickup (espn_value). 1-for-1, 2-for-1 and 1-for-2. A quick screen on values picks the
+    candidates; the best per team are then re-scored with the lineup simulation for both sides."""
+    if calendar.today > calendar.end:
+        return {"list": [], "weeks_left": 0}
+    days = calendar.days_left()
+    starting = league["starting"]
+    teams = {int(tid): [e["id"] for e in t["roster"] if e["id"] in players] for tid, t in league["teams"].items()}
+    healthy = sorted((p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]),
+                     key=lambda p: -p["ros"]["value"])
+    refill = healthy[0]["id"] if healthy else None
+
+    def val(pid):
+        return players[pid]["ros"]["value"]
+
+    espn_repl = sorted((espn_per_game(p) for p in healthy), reverse=True)
+    espn_repl = espn_repl[min(len(espn_repl) - 1, REPLACEMENT_FA_RANK - 1)] if espn_repl else 0.0
+
+    def espn(pid):
+        return espn_value(players[pid], espn_repl)
+
+    def sim(ids):
+        return project_days(ids, days, players, starting, calendar, samples=TRADE_SAMPLES, weighted=True)[0]
+
+    mine = teams[me]
+    base_me = sim(mine)
+    my_val = sum(val(x) for x in mine)
+    out = []
+    for tid, theirs in teams.items():
+        if tid == me or not theirs:
+            continue
+        their_espn = sum(espn(x) for x in theirs)
+        shapes = [(g, t) for g in combinations(mine, 1) for t in combinations(theirs, 1)]
+        shapes += [(g, t) for g in combinations(mine, 2) for t in combinations(theirs, 1)]
+        shapes += [(g, t) for g in combinations(mine, 1) for t in combinations(theirs, 2)]
+        screened = []
+        for give, get in shapes:
+            dv = sum(val(x) for x in after_trade(mine, give, get, players, val, refill)) - my_val
+            if dv < TRADE_SCREEN_FLOOR:
+                continue
+            de = sum(espn(x) for x in after_trade(theirs, get, give, players, espn, refill)) - their_espn
+            if de < 0:
+                continue
+            screened.append((dv, give, get, de))
+        screened.sort(key=lambda s: -s[0])
+        base_them = sim(theirs) if screened else 0.0
+        rows = []
+        for dv, give, get, de in screened[:TRADE_SCREEN]:
+            new_me = after_trade(mine, give, get, players, val, refill)
+            gain = sim(new_me) - base_me
+            if gain < TRADE_MIN_GAIN:
+                continue
+            new_them = after_trade(theirs, get, give, players, val, refill)
+            rows.append({"team": tid, "give": list(give), "get": list(get), "gain": round(gain),
+                         "their_gain": round(sim(new_them) - base_them), "their_espn": round(de),
+                         "my_drop": next((x for x in mine if x not in new_me and x not in give), None),
+                         "my_add": next((x for x in new_me if x not in mine and x not in get), None)})
+        rows.sort(key=lambda r: -r["gain"])
+        out += rows[:TRADE_PER_TEAM]
+    out.sort(key=lambda r: -r["gain"])
+    shown, uses = [], defaultdict(int)
+    for r in out:                     # variety: one player of yours in at most TRADE_PER_PLAYER ideas
+        if all(uses[x] < TRADE_PER_PLAYER for x in r["give"]):
+            shown.append(r)
+            for x in r["give"]:
+                uses[x] += 1
+    weeks_left = len(calendar.weeks) - (calendar.current_week() or 0)
+    deadline = league.get("trade_deadline")
+    return {"list": shown[:TRADE_SHOW], "weeks_left": weeks_left, "deadline": deadline // 1000 if deadline else None,
+            "refill": refill, "base": round(base_me)}
 
 def drop_order(league, players, me):
     active = [players[e["id"]] for e in roster(league, me, include_ir=False) if e["id"] in players]
@@ -241,10 +479,10 @@ def matchup(league, players, me, calendar):
         if tid is None:
             continue
         ids = [e["id"] for e in roster(league, tid, include_ir=False)]
-        pts, per_day = project_days(ids, days, players, league["starting"], calendar)
+        pts, per_day, _ = project_days(ids, days, players, league["starting"], calendar)
         out[side] = {"team": tid, "score": round(score[tid] or 0.0, 1), "remaining": round(pts, 1),
                      "projected": round((score[tid] or 0.0) + pts, 1),
-                     "starts": sum(n for _, _, n in per_day), "by_day": per_day}
+                     "starts": round(sum(n for _, _, n in per_day), 1), "by_day": per_day}
     return out
 
 
@@ -276,9 +514,10 @@ def injury_board(league, players, me, opp, calendar, beneficiaries=3):
 
 # ---------- the action list ----------
 
-def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers):
+def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan=None, trades=None):
     """The few things worth doing, each with how urgent it is (URGENCY) and, when there is one, the
-    deadline ("by", epoch seconds): most urgent first, then the nearest deadline."""
+    deadline ("by", epoch seconds): most urgent first, then the nearest deadline. With a week plan,
+    its next add is the stream to-do."""
     acts = list(ir)
     if lineup.get("state") == "season":
         tip = {r["id"]: r["tip"] for r in lineup["rows"] if r["tip"] and not r["locked"]}
@@ -295,12 +534,17 @@ def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_l
         acts.append({"kind": "waivers", "urgency": "fyi",
                      "title": "Every free agent is on waivers until %s" % waivers["clears_label"],
                      "detail": "Claims process then in waiver order; you are #%s of %d." % (waivers["my_rank"], league["size"])})
-    if stream_list["list"] and stream_list["list"][0]["net"] >= 10:
+    if plan is not None:
+        if plan["moves"]:
+            acts.append(plan_action(league, players, plan, calendar))
+    elif stream_list["list"] and stream_list["list"][0]["net"] >= PLAN_MIN_NET:
         acts.append(stream_action(league, players, stream_list, calendar))
     if ups["list"] and ups["list"][0]["gain"] >= 25:
         acts.append(upgrade_action(players, ups, waivers))
     if stash_list["free_ir"] > 0 and stash_list["list"]:
         acts.append(stash_action(league, players, me, stash_list, waivers, calendar))
+    if trades and trades["list"] and trades["list"][0]["gain"] >= TRADE_ACTION_GAIN:
+        acts.append(trade_action(league, players, trades))
     order = {u: i for i, u in enumerate(URGENCY)}
     acts.sort(key=lambda a: (order[a["urgency"]], a.get("by") or float("inf")))
     return acts
@@ -328,6 +572,47 @@ def stream_action(league, players, stream_list, calendar):
             "detail": "%s left this week." % plural(s["games"], "game")
                       + (" Costs %.0f of rest-of-season value." % s["ros_cost"] if s["ros_cost"] >= 1 else ""),
             "why": why}
+
+
+def plan_action(league, players, plan, calendar):
+    """The week plan's next add as a to-do; any later ones are listed in its detail."""
+    m, later = plan["moves"][0], plan["moves"][1:]
+    day = parse_day(m["day"])
+    first = m["by"]
+    why = "An add counts from the next day's first tip-off%s; after that it counts a day later and gains less." % (
+        " (%s)" % clock(first) if first else "")
+    if league["acq"].get("per_day"):
+        why += " Uses your one add for that day."
+    detail = "%s, %s expected to start, %+.0f points this week." % (
+        plural(m["games"], "game"), n1(m["starts"]), m["gain"])
+    if m["ros_cost"] >= 1:
+        detail += " Costs %.0f of rest-of-season value." % m["ros_cost"]
+    if later:
+        detail += " Then: " + "; ".join("%s add %s for %s" % (parse_day(x["day"]).strftime("%a"), name(players, x["id"]),
+                                                             name(players, x["drop"])) for x in later) + "."
+    when = "today" if day == calendar.today else day.strftime("%a %b %-d")
+    return {"kind": "stream", "urgency": "now" if first and first - calendar.now <= 86400 else "soon", "by": first,
+            "player": m["id"], "drop": m["drop"],
+            "title": "Stream %s for %s, counting from %s (+%.0f this week)" % (name(players, m["id"]), name(players, m["drop"]),
+                                                                            when, m["net"]),
+            "detail": detail, "why": why}
+
+
+def trade_action(league, players, trades):
+    t = trades["list"][0]
+    other = league["teams"][str(t["team"])]
+    weeks = max(1, trades["weeks_left"])
+    names = lambda ids: " + ".join(name(players, x) for x in ids)
+    deadline = (" The trade deadline is %s." % clock(trades["deadline"])) if trades.get("deadline") else ""
+    return {"kind": "trade", "urgency": "optional", "by": None, "give": t["give"], "get": t["get"], "title": "Trade idea with %s: %s for %s (+%.0f season points)" % (
+                other["abbrev"], names(t["give"]), names(t["get"]), t["gain"]),
+            "detail": "About %+.0f points a week for you over the %s left. They come out %+.0f on ESPN's projections, "
+                      "the numbers they will look at." % (t["gain"] / weeks, plural(weeks, "week"), t["their_espn"]),
+            "why": "No one is racing you for a trade, but every week you wait is a week of the gain gone.%s" % deadline}
+
+
+def n1(x):
+    return "%.1f" % x
 
 
 def upgrade_action(players, ups, waivers):
