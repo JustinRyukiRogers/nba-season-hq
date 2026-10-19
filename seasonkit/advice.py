@@ -232,11 +232,12 @@ def stream_spots(players, ids):
     return set(sorted(pool, key=lambda pid: players[pid]["ros"]["value"])[:STREAM_SPOTS])
 
 
-def add_options(ids, days, pool, players, starting, calendar, free=()):
+def add_options(ids, days, pool, players, starting, calendar, free=(), open_spots=0):
     """Every free agent in `pool` tried in place of each of your lowest-valued players and the
     streaming spot (`free`), over `days` of simulated daily lineups. -> (points now, [row for each
     free agent's best drop, best first]). net = points gained minus the rest-of-season value given
-    up when the player dropped is worth more; nothing is given up for the streaming spot."""
+    up when the player dropped is worth more; nothing is given up for the streaming spot. With an
+    open roster spot, an add needs no drop (drop None)."""
     base, _, _ = project_days(ids, days, players, starting, calendar)
 
     def horizon_points(p):
@@ -246,13 +247,16 @@ def add_options(ids, days, pool, players, starting, calendar, free=()):
     drops = sorted((pid for pid in ids if players[pid].get("droppable", True)),
                    key=lambda pid: players[pid]["ros"]["value"])[:STREAM_DROPS]
     drops += [pid for pid in free if pid in ids and pid not in drops]
+    if open_spots > 0:
+        drops.append(None)
     best = {}
     for c in cands:
         for x in drops:
             alt, _, by = project_days([pid for pid in ids if pid != x] + [c["id"]], days, players, starting, calendar)
             gain = alt - base
-            cost = 0.0 if x in free else max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
-            row = {"id": c["id"], "drop": x, "spot": x in free, "gain": round(gain, 1), "ros_cost": round(cost, 1),
+            spot = x is None or x in free
+            cost = 0.0 if spot else max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
+            row = {"kind": "add", "id": c["id"], "drop": x, "spot": spot, "gain": round(gain, 1), "ros_cost": round(cost, 1),
                    "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
                    "starts": round(by.get(c["id"], [0.0])[0], 1)}
             row["ok"] = row["net"] >= (STREAM_MIN_GAIN if row["spot"] else PLAN_MIN_NET)
@@ -273,12 +277,14 @@ def streams(league, players, me, calendar, txs=(), top=10):
             "list": [r for r in rows if r["gain"] > 0][:top]}
 
 
-def week_plan(league, players, me, calendar, txs=()):
+def week_plan(league, players, me, calendar, txs=(), stash=None):
     """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
     counting from the day's first tip-off), and the lineup to set each day with the roster you
     will have then. Each day the streaming spot goes to the free agent who adds most to that day's
     lineup (STREAM_HORIZON); a real player is dropped only if the gain beats his rest-of-season
-    value. Re-planned on every refresh."""
+    value. stash: {"id", "drop"} of an IR stash to make first; it takes the first day's add, and
+    the spot it frees (when ESPN wants a drop for it) is streamed from the next day. Re-planned on
+    every refresh."""
     days = week_days(calendar)
     if not days or calendar.today > calendar.end:
         return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
@@ -291,11 +297,22 @@ def week_plan(league, players, me, calendar, txs=()):
     held = list(ids)
     used, moves = set(ids), []
     spot = stream_spots(players, ids)
+    open_spots = 0
     for i, d in enumerate(days):
         if d not in can_move or len(moves) >= cap:
             continue
+        if stash:
+            moves.append({"kind": "stash", "id": stash["id"], "drop": stash.get("drop"), "spot": False, "gain": 0.0,
+                          "ros_cost": 0.0, "net": 0.0, "games": 0, "starts": 0.0, "day": str(d), "by": calendar.first_tip(d)})
+            if stash.get("drop") in held:
+                held.remove(stash["drop"])
+                spot.discard(stash["drop"])
+                open_spots += 1
+            used |= {stash["id"], stash.get("drop")}
+            stash = None
+            continue
         pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"] and p["id"] not in used]
-        _, rows = add_options(held, days[i:i + STREAM_HORIZON], pool, players, starting, calendar, spot)
+        _, rows = add_options(held, days[i:i + STREAM_HORIZON], pool, players, starting, calendar, spot, open_spots)
         row = next((r for r in rows if r["ok"]), None)
         if not row:
             continue
@@ -303,6 +320,8 @@ def week_plan(league, players, me, calendar, txs=()):
         moves.append(m)
         held = [pid for pid in held if pid != m["drop"]] + [m["id"]]
         used |= {m["id"], m["drop"]}
+        if m["drop"] is None:
+            open_spots -= 1
         if m["spot"]:
             spot = (spot - {m["drop"]}) | {m["id"]}
 
@@ -310,8 +329,8 @@ def week_plan(league, players, me, calendar, txs=()):
     locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False)}
     for d in days:
         for m in moves:
-            if m["day"] == str(d):
-                rosters = [pid for pid in rosters if pid != m["drop"]] + [m["id"]]
+            if m["day"] == str(d):   # a stash goes to IR, out of the lineup
+                rosters = [pid for pid in rosters if pid != m["drop"]] + ([m["id"]] if m["kind"] == "add" else [])
         day = day_lineup(rosters, d, players, starting, calendar, locked if d == calendar.today else {})
         day["moves"] = [m for m in moves if m["day"] == str(d)]
         total += day["points"]
@@ -558,14 +577,21 @@ def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_l
                      "title": "Every free agent is on waivers until %s" % waivers["clears_label"],
                      "detail": "Claims process then in waiver order; you are #%s of %d." % (waivers["my_rank"], league["size"])})
     if plan is not None:
-        if plan["moves"]:
+        if any(x["kind"] == "add" for x in plan["moves"]):
             acts.append(plan_action(league, players, plan, calendar))
     elif stream_list["list"] and stream_list["list"][0].get("ok"):
         acts.append(stream_action(league, players, stream_list, calendar))
     if ups["list"] and ups["list"][0]["gain"] >= 25:
         acts.append(upgrade_action(players, ups, waivers))
     if stash_list["free_ir"] > 0 and stash_list["list"]:
-        acts.append(stash_action(league, players, me, stash_list, waivers, calendar))
+        st = stash_action(league, players, me, stash_list, waivers, calendar)
+        planned = next((m for m in (plan or {}).get("moves", []) if m["kind"] == "stash" and m["id"] == st["player"]), None)
+        if planned and planned["by"]:
+            if not st["by"] or planned["by"] < st["by"]:
+                st["by"] = planned["by"]
+            st["why"] += (" The week plan gives him %s's add, so make it before that day's first tip-off; "
+                          "streaming starts the day after." % parse_day(planned["day"]).strftime("%A"))
+        acts.append(st)
     if trades and trades["list"] and trades["list"][0]["gain"] >= TRADE_ACTION_GAIN:
         acts.append(trade_action(league, players, trades))
     order = {u: i for i, u in enumerate(URGENCY)}
@@ -599,7 +625,8 @@ def stream_action(league, players, stream_list, calendar):
 
 def plan_action(league, players, plan, calendar):
     """The week plan's next add as a to-do; any later ones are listed in its detail."""
-    m, later = plan["moves"][0], plan["moves"][1:]
+    adds = [x for x in plan["moves"] if x["kind"] == "add"]
+    m, later = adds[0], adds[1:]
     day = parse_day(m["day"])
     first = m["by"]
     why = "An add counts from the next day's first tip-off%s; after that it counts a day later and gains less." % (
@@ -608,19 +635,22 @@ def plan_action(league, players, plan, calendar):
         why += " Uses your one add for that day."
     detail = "%s for that day's lineup%s." % ("%+.0f points" % m["gain"],
         " (%s expected to start)" % n1(m["starts"]) if m["games"] else "")
-    if m["spot"]:
+    if m["drop"] is None:
+        detail += " It fills the spot opened by the IR stash, so nothing is dropped."
+    elif m["spot"]:
         detail += (" %s holds your streaming spot: turning it over to a new free agent most days beats holding "
                    "him (season test: +15 to +47 points a week)." % name(players, m["drop"]))
     if m["ros_cost"] >= 1:
         detail += " Costs %.0f of rest-of-season value." % m["ros_cost"]
     if later:
         detail += " Then: " + "; ".join("%s add %s for %s" % (parse_day(x["day"]).strftime("%a"), name(players, x["id"]),
-                                                             name(players, x["drop"])) for x in later) + "."
+                                                             name(players, x["drop"]) if x["drop"] else "the open spot")
+                                        for x in later) + "."
     when = "today" if day == calendar.today else day.strftime("%a %b %-d")
     return {"kind": "stream", "urgency": "now" if first and first - calendar.now <= 86400 else "soon", "by": first,
             "player": m["id"], "drop": m["drop"],
-            "title": "Stream %s for %s, counting from %s (+%.0f that day)" % (name(players, m["id"]), name(players, m["drop"]),
-                                                                           when, m["net"]),
+            "title": "Stream %s %s, counting from %s (+%.0f that day)" % (
+                name(players, m["id"]), "for %s" % name(players, m["drop"]) if m["drop"] else "into the open spot", when, m["net"]),
             "detail": detail, "why": why}
 
 

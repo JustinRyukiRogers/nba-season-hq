@@ -250,10 +250,17 @@ function viewWeek() {
   if (W.moves.length) {
     for (const m of W.moves) {
       const p = P(m.id);
+      if (m.kind === 'stash') {
+        out.push(`<div class="card act soon">
+          <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)} and move him to IR${m.drop ? `, dropping ${esc(P(m.drop).name)} if ESPN asks` : ''}</div>
+          <div class="d">The IR stash from the Today tab. It takes this day's add, so streaming starts the next day${m.drop ? `, in the spot ${esc(P(m.drop).name)} leaves` : ''}.</div>
+          <div class="who">${pill(m.id, 'add, then IR')}${m.drop ? pill(m.drop, 'drop if needed') : ''}</div></div>`);
+        continue;
+      }
       out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
-        <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, drop ${esc(P(m.drop).name)}</div>
+        <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, ${m.drop ? 'drop ' + esc(P(m.drop).name) : 'into the open spot'}</div>
         <div class="d">${signed(m.gain)} points in that day's lineup${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}.</div>
-        <div class="who">${pill(m.id, 'add')}${pill(m.drop, 'drop')}</div></div>`);
+        <div class="who">${pill(m.id, 'add')}${m.drop ? pill(m.drop, 'drop') : ''}</div></div>`);
     }
   } else {
     const s = d.streams && d.streams.list[0];
@@ -268,7 +275,8 @@ function viewWeek() {
     ${W.preseason_add ? 'ESPN may count the days before the opener as one day for the one-add limit, so an add made before the opener can use up opening day\'s.' : ''}</p>`);
 
   for (const day of W.lineups) {
-    const moves = day.moves.map(m => `<div class="small"><b>Before ${esc(day.first_tip ? timeLabel(day.first_tip) : 'the first game')}:</b> add ${esc(P(m.id).name)}, drop ${esc(P(m.drop).name)}</div>`).join('');
+    const moves = day.moves.map(m => `<div class="small"><b>Before ${esc(day.first_tip ? timeLabel(day.first_tip) : 'the first game')}:</b> add ${esc(P(m.id).name)}${
+      m.kind === 'stash' ? ' and move him to IR' + (m.drop ? `, dropping ${esc(P(m.drop).name)} if ESPN asks` : '') : m.drop ? ', drop ' + esc(P(m.drop).name) : ' into the open spot'}</div>`).join('');
     const filled = day.slots.filter(r => r[1]);
     const empty = day.slots.length - filled.length;
     const rows = filled.map(([slot, id, prob, pts, locked]) => {

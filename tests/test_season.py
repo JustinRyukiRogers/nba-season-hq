@@ -255,6 +255,12 @@ def test_week_plan_and_move_days():
     day1 = plan["lineups"][1]
     assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
     assert plan["points"] == plan["points_now"] + 3 * 30.0 - 2 * 20.0
+    plan = advice.week_plan(lg, players, 3, cal, [], stash={"id": 7, "drop": 1})
+    first, second = plan["moves"][:2]
+    assert first["kind"] == "stash" and first["day"] == str(start + timedelta(days=1)), "the stash takes the first add"
+    assert (second["id"], second["drop"], second["day"]) == (9, None, str(start + timedelta(days=2))), \
+        "streaming starts the next day, in the spot the stash freed: %s" % second
+    assert all(7 not in {r[1] for r in day["slots"]} for day in plan["lineups"]), "a stashed player sits in IR"
     players[1]["ros"]["out"] = True
     assert advice.stream_spots(players, [1, 2]) == {2}, "an Out player goes to IR, not the streaming spot"
     cal.now = 0

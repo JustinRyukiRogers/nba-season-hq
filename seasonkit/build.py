@@ -207,7 +207,17 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     ups = advice.upgrades(league, players, me)
     stash_list = advice.stash(league, players, me, free_ir)
     stream_list = advice.streams(league, players, me, calendar, txs)
-    plan = advice.week_plan(league, players, me, calendar, txs)
+    on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
+    clears = min((p["waiver_until"] for p in on_waivers if p["waiver_until"]), default=None)
+    waivers = {"all_on_waivers": bool(fas) and len(on_waivers) == len(fas), "clears": clears,
+               "clears_label": datetime.fromtimestamp(clears, model.ET).strftime("%a %b %-d, %-I:%M %p ET") if clears else None,
+               "my_rank": league["teams"][str(me)]["waiver_rank"],
+               "order": sorted((t["waiver_rank"] or 99, int(tid)) for tid, t in league["teams"].items())}
+    # a stash worth beating a deadline for takes the first add of the week plan
+    pending = (advice.stash_action(league, players, me, stash_list, waivers, calendar)
+               if stash_list["free_ir"] > 0 and stash_list["list"] else None)
+    reserve = {"id": pending["player"], "drop": pending["drop"]} if pending and pending["urgency"] in ("now", "soon") else None
+    plan = advice.week_plan(league, players, me, calendar, txs, reserve)
     trades = advice.trade_ideas(league, players, me, calendar)
 
     # starts, not games: what each roster's best daily lineups get out of it, if it is held
@@ -221,12 +231,6 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
                 players[pid]["lineup"] = o
     match = advice.matchup(league, players, me, calendar)
     opp = match["opp"] if match else None
-    on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
-    clears = min((p["waiver_until"] for p in on_waivers if p["waiver_until"]), default=None)
-    waivers = {"all_on_waivers": bool(fas) and len(on_waivers) == len(fas), "clears": clears,
-               "clears_label": datetime.fromtimestamp(clears, model.ET).strftime("%a %b %-d, %-I:%M %p ET") if clears else None,
-               "my_rank": league["teams"][str(me)]["waiver_rank"],
-               "order": sorted((t["waiver_rank"] or 99, int(tid)) for tid, t in league["teams"].items())}
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)
 
