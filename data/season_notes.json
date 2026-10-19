@@ -7,5 +7,10 @@
     "note: text shown on his card.",
     "This file is public in the GitHub repo. Commit and push to apply it; the next refresh picks it up."
   ],
-  "players": {}
+  "players": {
+    "Brandon Ingram": {
+      "out_until": "2026-12-01",
+      "note": "Set 2026-10-19: ESPN's Nov 8 is a placeholder. The May heel surgery also repaired a partially torn Achilles; the Clippers give no timetable (Ingram calls it week by week, back doing on-court work). Dec 1 is a middle guess; move it when the team gives a date."
+    }
+  }
 }
