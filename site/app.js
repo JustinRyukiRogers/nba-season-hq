@@ -252,9 +252,9 @@ function viewWeek() {
       const p = P(m.id);
       if (m.kind === 'stash') {
         out.push(`<div class="card act soon">
-          <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)} and move him to IR${m.drop ? `, dropping ${esc(P(m.drop).name)} if ESPN asks` : ''}</div>
+          <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)} and move him to IR${m.drop ? `, dropping ${esc(P(m.drop).name)}` : ''}</div>
           <div class="d">The IR stash from the Today tab. It takes this day's add, so streaming starts the next day${m.drop ? `, in the spot ${esc(P(m.drop).name)} leaves` : ''}.</div>
-          <div class="who">${pill(m.id, 'add, then IR')}${m.drop ? pill(m.drop, 'drop if needed') : ''}</div></div>`);
+          <div class="who">${pill(m.id, 'add, then IR')}${m.drop ? pill(m.drop, 'drop') : ''}</div></div>`);
         continue;
       }
       out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
@@ -266,7 +266,7 @@ function viewWeek() {
     const s = d.streams && d.streams.list[0];
     out.push(`<div class="card muted">No add is worth making for the rest of this week.</div>`);
   }
-  const spot = (W.spot || []).map(id => esc(P(id).name)).join(', ');
+  const spot = [...(W.spot || []).map(id => esc(P(id).name)), ...(W.open ? ['an empty roster spot'] : [])].join(', ');
   out.push(`<p class="small muted"><b>Streaming spot${spot ? ': ' + spot : ''}.</b> Your lowest-valued healthy player's roster spot goes to a new
     free agent most days: whoever adds most to that day's lineup. Tested over the whole season with this roster, that beat holding him by
     15 to 47 points a week, even assuming other teams take the best free agents and free agents score 15% under projection.
@@ -276,7 +276,7 @@ function viewWeek() {
 
   for (const day of W.lineups) {
     const moves = day.moves.map(m => `<div class="small"><b>Before ${esc(day.first_tip ? timeLabel(day.first_tip) : 'the first game')}:</b> add ${esc(P(m.id).name)}${
-      m.kind === 'stash' ? ' and move him to IR' + (m.drop ? `, dropping ${esc(P(m.drop).name)} if ESPN asks` : '') : m.drop ? ', drop ' + esc(P(m.drop).name) : ' into the open spot'}</div>`).join('');
+      m.kind === 'stash' ? ' and move him to IR' + (m.drop ? `, dropping ${esc(P(m.drop).name)}` : '') : m.drop ? ', drop ' + esc(P(m.drop).name) : ' into the open spot'}</div>`).join('');
     const filled = day.slots.filter(r => r[1]);
     const empty = day.slots.length - filled.length;
     const rows = filled.map(([slot, id, prob, pts, locked]) => {

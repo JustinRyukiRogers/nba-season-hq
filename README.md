@@ -111,9 +111,10 @@ Actions > refresh and press "Enable workflow".
 The blend weight, the 60% and 93% play chances and the stream thresholds are judgment, not
 fitted. ESPN's rules that matter, as read on 2026-10-16: 1 add a day, waivers 24 hours with a
 rolling order, lineups lock per game, only players tagged Out fit an IR slot, and a healthy
-player in IR blocks adds. Whether ESPN lets you add an Out player straight into an empty IR slot
-when the bench is full is not confirmed; the stash advice allows for either. Nor is whether
-ESPN counts the days before the opener as one scoring day for the 1-add-a-day limit. Streams
+player in IR blocks adds. Confirmed 2026-10-19: with a full roster ESPN asks for a drop before an Out player can be
+added, even with an IR slot free, so the stash advice drops the streaming spot (or uses an empty
+roster spot). An add made before the opener showed as 0 acquisitions on ESPN's counter, so the
+days before the opener seem not to count against the 1-add-a-day limit. Streams
 assume an add made after the day's first tip-off counts from the next day. The HOT/COLD and
 MIN flags are display rules of thumb, not fitted. The week plan is greedy (each day takes the
 best add left), and trade ideas lean entirely on the gap between the dashboard's numbers and

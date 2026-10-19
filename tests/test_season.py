@@ -117,11 +117,13 @@ def test_urgency():
                11: player(11, value=105.0, owner=0, fa="WAIVERS")}
     for pid, own, chg in ((10, 45.0, -0.7), (11, 30.0, 0.1)):
         players[pid].update(own=own, own_chg=chg, waiver_until=deadline)
-    st = {"free_ir": 2, "drop": 1, "refill": 11, "list": [{"id": 10, "back": "2027-01-02", "games_after": 15.8}]}
+    st = {"free_ir": 2, "drop": 1, "drop_is_spot": True, "refill": 11, "list": [{"id": 10, "back": "2027-01-02", "games_after": 15.8}]}
     a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
     assert a["urgency"] == "soon" and a["by"] == deadline, a
     assert "7 teams claim before you" in a["why"]
-    assert "Wed Oct 21" in a["steps"][-1], "before the opener the refill may have to wait for the second scoring day"
+    assert "a day of streaming" in a["detail"], "dropping the streaming spot for a stash costs only a day of streaming"
+    a = advice.stash_action(lg, players, 3, dict(st, free_ir=1), {"my_rank": 8}, cal)
+    assert a["urgency"] == "optional", "filling the last IR slot needs a bigger gain to be urgent"
 
     waivers = {"all_on_waivers": True, "clears_label": "Sat", "my_rank": 8}
     acts = advice.actions(lg, players, 3, cal, [{"kind": "ir_blocked", "urgency": "now", "title": "x"}], {"state": "preseason"},
@@ -133,8 +135,17 @@ def test_urgency():
     a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
     assert a["urgency"] == "optional" and a["by"] is None, "a small gain no one is chasing can wait"
     players[10]["ros"]["value"] = 10.0
-    a = advice.stash_action(lg, players, 3, st, {"my_rank": 8}, cal)
-    assert "only if ESPN lets you" in a["steps"][0], "a stash worth less than the swap it may force is not worth a drop"
+    a = advice.stash_action(lg, players, 3, dict(st, drop_is_spot=False), {"my_rank": 8}, cal)
+    assert a["net"] == 10.0 - (120.0 - 105.0) and "Not worth it" in a["steps"][0], "a real player dropped costs his value"
+
+    lg["slots"] = {"BE": 1}
+    st = advice.stash(lg, players, 3, 2)
+    assert st["open"] and st["drop"] is None, "with an open roster spot the stash needs no drop"
+    lg["starting"] = ["UT", "UT"]
+    lg["teams"]["3"]["roster"].append({"id": 5, "slot": "BE"})
+    players[5] = player(5, value=60.0)
+    st = advice.stash(lg, players, 3, 2)
+    assert not st["open"] and st["drop"] == 5 and st["drop_is_spot"], "a full roster drops the streaming spot"
 
 
 def test_team_report():
@@ -255,6 +266,11 @@ def test_week_plan_and_move_days():
     day1 = plan["lineups"][1]
     assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
     assert plan["points"] == plan["points_now"] + 3 * 30.0 - 2 * 20.0
+    lg["slots"] = {"BE": 1}
+    open_plan = advice.week_plan(lg, players, 3, cal, [])
+    assert open_plan["moves"][0]["drop"] is None and open_plan["open"] == 1, \
+        "an empty roster spot is the streaming spot: fill it before dropping anyone"
+    lg["slots"] = {}
     plan = advice.week_plan(lg, players, 3, cal, [], stash={"id": 7, "drop": 1})
     first, second = plan["moves"][:2]
     assert first["kind"] == "stash" and first["day"] == str(start + timedelta(days=1)), "the stash takes the first add"

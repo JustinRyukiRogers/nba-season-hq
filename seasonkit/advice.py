@@ -189,13 +189,20 @@ def upgrades(league, players, me, top=12):
 
 def stash(league, players, me, free_ir, top=12):
     """Free agents tagged Out (so IR-eligible) ranked by what they add once back. Holding one costs
-    nothing while he is Out, but the add itself needs a roster spot at the time."""
+    nothing while he is Out, but the add itself needs a free roster spot (confirmed on ESPN
+    2026-10-19: with a full roster it asked for a drop). The drop is the streaming spot: once the
+    stash is in IR the spot is free again and streaming carries on, so it costs a day of streaming."""
     rows = [p for p in free_agents(players) if p["status"] == "OUT" and not p["ros"]["season_over"]
             and p["ros"]["value"] > 0]
     rows.sort(key=lambda p: -p["ros"]["value"])
-    active = roster(league, me, include_ir=False)
+    active = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
+    room = open_room(league, active)
+    spot = stream_spots(players, active, room)
+    drop = None if room > 0 else (min(spot, key=lambda pid: players[pid]["ros"]["value"]) if spot
+                                  else weakest(players, roster(league, me, include_ir=False)))
     healthy = sorted((p for p in free_agents(players) if not p["ros"]["out"]), key=lambda p: -p["ros"]["value"])
-    return {"free_ir": free_ir, "drop": weakest(players, active), "refill": healthy[0]["id"] if healthy else None,
+    return {"free_ir": free_ir, "drop": drop, "open": room > 0, "drop_is_spot": drop in spot,
+            "refill": healthy[0]["id"] if healthy else None,
             "list": [{"id": p["id"], "back": p["ros"]["back"], "games_after": p["ros"]["games"]} for p in rows[:top]]}
 
 
@@ -225,11 +232,17 @@ def move_days(league, calendar, me, txs=()):
     return days
 
 
-def stream_spots(players, ids):
+def open_room(league, ids):
+    """Empty roster spots outside IR: starting slots plus bench, less the players holding them."""
+    return max(0, len(league["starting"]) + (league.get("slots") or {}).get("BE", 0) - len(ids))
+
+
+def stream_spots(players, ids, room=0):
     """The players holding your streaming spots: the lowest-valued droppable ones not tagged Out (an
-    Out player belongs in IR). Once a streamer holds the spot he is the lowest, so it stays put."""
+    Out player belongs in IR). An empty roster spot is a streaming spot already, so `room` of them
+    leave fewer players to name. Once a streamer holds the spot he is the lowest, so it stays put."""
     pool = [pid for pid in ids if players[pid].get("droppable", True) and not players[pid]["ros"]["out"]]
-    return set(sorted(pool, key=lambda pid: players[pid]["ros"]["value"])[:STREAM_SPOTS])
+    return set(sorted(pool, key=lambda pid: players[pid]["ros"]["value"])[:max(0, STREAM_SPOTS - room)])
 
 
 def add_options(ids, days, pool, players, starting, calendar, free=(), open_spots=0):
@@ -272,8 +285,10 @@ def streams(league, players, me, calendar, txs=(), top=10):
         return {"days": [], "list": []}
     ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
     pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
-    base, rows = add_options(ids, days, pool, players, league["starting"], calendar, stream_spots(players, ids))
-    return {"days": [str(d) for d in days], "base": round(base, 1), "spot": sorted(stream_spots(players, ids)),
+    room = open_room(league, ids)
+    spot = stream_spots(players, ids, room)
+    base, rows = add_options(ids, days, pool, players, league["starting"], calendar, spot, room)
+    return {"days": [str(d) for d in days], "base": round(base, 1), "spot": sorted(spot), "open": room,
             "list": [r for r in rows if r["gain"] > 0][:top]}
 
 
@@ -296,8 +311,8 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
     ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
     held = list(ids)
     used, moves = set(ids), []
-    spot = stream_spots(players, ids)
-    open_spots = 0
+    open_spots = open_room(league, ids)
+    spot = stream_spots(players, ids, open_spots)
     for i, d in enumerate(days):
         if d not in can_move or len(moves) >= cap:
             continue
@@ -339,7 +354,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
     return {"days": [str(d) for d in days], "moves": moves, "lineups": lineups, "points": round(total, 1),
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
             "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
-            "spot": sorted(stream_spots(players, ids))}
+            "spot": sorted(stream_spots(players, ids, open_room(league, ids))), "open": open_room(league, ids)}
 
 
 def day_lineup(ids, day, players, starting, calendar, slots_now):
@@ -688,15 +703,22 @@ def upgrade_action(players, ups, waivers):
 
 
 def stash_action(league, players, me, stash_list, waivers, calendar):
-    """The best stash as a to-do. Holding him costs nothing while he is Out; the add itself may
-    need a roster spot, so the steps cover ESPN asking for a drop. Urgency: a claim has a deadline,
-    and a player many ESPN leagues roster will interest this one too."""
+    """The best stash as a to-do. Holding him costs nothing while he is Out; the add needs a free
+    roster spot, so with a full roster the streaming spot is dropped for him (a day of streaming
+    lost) or, failing that, your weakest player (his value lost, less the best free agent's).
+    Urgency: a claim has a deadline, and a player many ESPN leagues roster will interest this one
+    too; filling your last IR slot is never more than optional unless he is worth twice the bar."""
     st = stash_list["list"][0]
     p = players[st["id"]]
     drop, refill, n = stash_list["drop"], stash_list.get("refill"), stash_list["free_ir"]
     value, claim = p["ros"]["value"], _claim(p)
+    swap = 0.0
+    if drop and not stash_list.get("drop_is_spot"):
+        swap = max(0.0, players[drop]["ros"]["value"] - (players[refill]["ros"]["value"] if refill else 0.0))
+    net = value - swap
     interest = p["own"] >= INTEREST_OWNED or p["own_chg"] >= INTEREST_ADDS
-    soon = value >= STASH_SOON_VALUE and (bool(claim and claim - calendar.now <= 2 * 86400) or interest)
+    bar = STASH_SOON_VALUE * (2 if n == 1 else 1)
+    soon = net >= bar and (bool(claim and claim - calendar.now <= 2 * 86400) or interest)
 
     why = []
     if claim:
@@ -704,43 +726,43 @@ def stash_action(league, players, me, stash_list, waivers, calendar):
                    % (clock(claim), plural(_ahead(waivers), "team")))
     why.append("%.0f%% owned across ESPN (%+.1f today)." % (p["own"], p["own_chg"]))
     if not soon:
-        why.append("A modest gain, so no rush." if value < STASH_SOON_VALUE else "Few leagues want him, so he should still be there.")
+        why.append("A modest gain, so no rush." if net < STASH_SOON_VALUE
+                   else "It would fill your last IR slot, so only if you are sure." if n == 1
+                   else "Few leagues want him, so he should still be there.")
 
-    swap = max(0.0, players[drop]["ros"]["value"] - players[refill]["ros"]["value"]) if drop and refill else 0.0
     mine = [players[e["id"]] for e in roster(league, me) if e["id"] in players and e["id"] != p["id"]]
     like = min(mine, key=lambda q: abs(q["ros"]["value"] - value)) if mine else None
     back = parse_day(st["back"]).strftime("%b %-d") if st["back"] else "?"
     detail = ("Worth about %.0f over a waiver pickup once he is back%s; that already allows for a late return. "
               "He costs nothing while he sits in IR (%s free)." % (
                   value, " (close to %s's value to you)" % like["name"] if like else "", plural(n, "slot")))
-    if drop:
-        detail += " Gain: +%.0f if ESPN puts him straight into IR, about +%.0f if you have to drop %s for him." % (
-            value, value - swap, name(players, drop))
+    dname = name(players, drop) if drop else None
+    if stash_list.get("open"):
+        detail += " You have an open roster spot, so the add needs no drop."
+    elif stash_list.get("drop_is_spot"):
+        detail += (" ESPN needs a free roster spot for the add, so %s goes; he holds your streaming spot, which is "
+                   "free again once the stash is in IR, so it costs a day of streaming." % dname)
+    elif drop:
+        detail += " ESPN needs a free roster spot for the add, so %s goes: a gain of about +%.0f after losing him." % (dname, net)
 
     steps = []
-    dname = name(players, drop) if drop else None
-    if drop and value - swap <= 0:
-        steps.append("Add him only if ESPN lets you put him straight into IR: swapping out %s costs more than he adds." % dname)
+    if net <= 0:
+        steps.append("Not worth it: dropping %s for him costs more than he adds." % dname)
     elif claim:
-        steps.append("Claim him before %s. If ESPN asks for a drop, pick %s; the drop only happens if you win "
-                     "the claim." % (clock(claim), dname))
+        steps.append("Claim him before %s%s; the drop only happens if you win the claim." % (
+            clock(claim), ", dropping %s" % dname if drop else ""))
     else:
-        steps.append("Add him. If ESPN asks for a drop, pick %s." % dname)
+        steps.append("Add him%s." % (", dropping %s" % dname if drop else " into your open roster spot"))
     steps.append("Once he is yours, move him to IR.")
     if league["acq"].get("per_day"):
-        steps.append("He uses your one add for that day, so any stream on the to-do list waits a day; the stash is "
-                     "worth more over the season than one day of streaming.")
-    if drop and refill and value - swap > 0:
-        refill_step = "If you dropped %s, use the open spot on the best free agent (%s right now)." % (dname, name(players, refill))
-        if calendar.today < calendar.start and league["acq"].get("per_day"):
-            refill_step += (" ESPN may count the days before the opener as one day for the one-add-a-day "
-                            "limit; if it refuses, the add goes through %s." % (calendar.start + timedelta(days=1)).strftime("%a %b %-d"))
-        steps.append(refill_step)
+        steps.append("He uses your one add for that day, so streaming waits a day.")
+    if net > 0:
+        steps.append("The day after, stream the open spot again (the Week tab has the pick).")
     if n == 1:
         steps.append("This uses your last IR slot, leaving none for your own injuries.")
     return {"kind": "stash", "urgency": "soon" if soon else "optional", "by": claim if soon else None,
             "player": p["id"], "drop": drop, "title": "IR stash: %s (back %s)" % (p["name"], back),
-            "detail": detail, "why": " ".join(why), "steps": steps}
+            "detail": detail, "why": " ".join(why), "steps": steps, "net": round(net, 1)}
 
 
 # ---------- how your players compare with their projections ----------
