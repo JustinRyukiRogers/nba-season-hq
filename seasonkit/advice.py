@@ -175,9 +175,12 @@ def free_agents(players, instant_only=False):
 
 
 def upgrades(league, players, me, top=12):
-    """Free agents worth more over the rest of the season than your weakest player."""
+    """Free agents worth more over the rest of the season than your weakest player outside the
+    streaming spot (the spot turns over to a new free agent most days, so a season-long pickup
+    has to beat a player you would otherwise keep)."""
     active = roster(league, me, include_ir=False)
-    drop = weakest(players, active)
+    ids = [e["id"] for e in active if e["id"] in players]
+    drop = weakest(players, active, exclude=stream_spots(players, ids, open_room(league, ids)))
     if drop is None:
         return {"drop": None, "list": []}
     floor = players[drop]["ros"]["value"]

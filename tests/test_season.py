@@ -299,6 +299,16 @@ def test_trade_helpers():
     assert advice.espn_value(star, 25.0) > 2 * advice.espn_value(mid, 25.0), "two middling players are not a star"
 
 
+
+def test_upgrades_skip_streaming_spot():
+    players = {1: player(1, value=40.0), 2: player(2, value=160.0), 3: player(3, value=900.0),
+               9: player(9, value=120.0, owner=0, fa="WAIVERS")}
+    lg = league_with([(1, "BE"), (2, "BE"), (3, "UT")])
+    lg["starting"], lg["slots"] = ["UT"], {"BE": 2}
+    ups = advice.upgrades(lg, players, 3)
+    assert ups["drop"] == 2 and not ups["list"], "a free agent worth less than your weakest kept player is no upgrade: %s" % ups
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
