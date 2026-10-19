@@ -13,7 +13,16 @@ from .model import ET, REPLACEMENT_FA_RANK, best_lineup, et_date, lineup_day, pa
 STREAM_DROPS = 3          # drop candidates tried for each stream: your lowest-valued players
 STREAM_POOL = 40          # free agents tried as streams, by expected points this week
 LINEUP_MIN_GAIN = 0.5     # expected points before a lineup change is worth suggesting
-PLAN_MIN_NET = 10.0       # points this week, net of rest-of-season value given up, before an add is planned
+PLAN_MIN_NET = 10.0       # points, net of rest-of-season value given up, before an add for a real player is planned
+# The streaming spot: your lowest-valued healthy player's roster spot turned over to a new free agent
+# most days. Tested 2026-10-19 on this roster with the lineup simulation over the whole season: one
+# spot streamed day by day beat holding Saddiq Bey by +15 to +47 points a week (pessimistic: other
+# teams take the best 50 free agents and free agents score 15% under projection), and won every week.
+# A second spot was worth nothing in the pessimistic case. Picking the add on the next day alone
+# beat looking 2, 3 or 7 days ahead, and the minimum gain barely mattered (1 to 10 points).
+STREAM_SPOTS = 1
+STREAM_HORIZON = 1        # days an add is judged on
+STREAM_MIN_GAIN = 5.0     # points before a streaming-spot add is worth the move
 
 # Trade ideas: a quick screen on rest-of-season value, then the best few per team re-scored with
 # the lineup simulation for both sides.
@@ -216,11 +225,18 @@ def move_days(league, calendar, me, txs=()):
     return days
 
 
-def add_options(ids, days, pool, players, starting, calendar, streamers=()):
-    """Every free agent in `pool` tried in place of each of your lowest-valued players (and any
-    streamer added earlier), over `days` of simulated daily lineups. -> (points now, [row for each
-    free agent's best drop, best first]). net = points gained this week minus the rest-of-season
-    value given up when the player dropped is worth more."""
+def stream_spots(players, ids):
+    """The players holding your streaming spots: the lowest-valued droppable ones not tagged Out (an
+    Out player belongs in IR). Once a streamer holds the spot he is the lowest, so it stays put."""
+    pool = [pid for pid in ids if players[pid].get("droppable", True) and not players[pid]["ros"]["out"]]
+    return set(sorted(pool, key=lambda pid: players[pid]["ros"]["value"])[:STREAM_SPOTS])
+
+
+def add_options(ids, days, pool, players, starting, calendar, free=()):
+    """Every free agent in `pool` tried in place of each of your lowest-valued players and the
+    streaming spot (`free`), over `days` of simulated daily lineups. -> (points now, [row for each
+    free agent's best drop, best first]). net = points gained minus the rest-of-season value given
+    up when the player dropped is worth more; nothing is given up for the streaming spot."""
     base, _, _ = project_days(ids, days, players, starting, calendar)
 
     def horizon_points(p):
@@ -229,37 +245,40 @@ def add_options(ids, days, pool, players, starting, calendar, streamers=()):
     cands = sorted(pool, key=lambda p: -horizon_points(p))[:STREAM_POOL]
     drops = sorted((pid for pid in ids if players[pid].get("droppable", True)),
                    key=lambda pid: players[pid]["ros"]["value"])[:STREAM_DROPS]
-    drops += [pid for pid in streamers if pid in ids and pid not in drops]
+    drops += [pid for pid in free if pid in ids and pid not in drops]
     best = {}
     for c in cands:
         for x in drops:
             alt, _, by = project_days([pid for pid in ids if pid != x] + [c["id"]], days, players, starting, calendar)
             gain = alt - base
-            cost = max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
-            row = {"id": c["id"], "drop": x, "gain": round(gain, 1), "ros_cost": round(cost, 1),
+            cost = 0.0 if x in free else max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
+            row = {"id": c["id"], "drop": x, "spot": x in free, "gain": round(gain, 1), "ros_cost": round(cost, 1),
                    "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
                    "starts": round(by.get(c["id"], [0.0])[0], 1)}
+            row["ok"] = row["net"] >= (STREAM_MIN_GAIN if row["spot"] else PLAN_MIN_NET)
             if c["id"] not in best or row["net"] > best[c["id"]]["net"]:
                 best[c["id"]] = row
     return base, sorted(best.values(), key=lambda r: -r["net"])
 
 
 def streams(league, players, me, calendar, txs=(), top=10):
-    """Best single add for the rest of this matchup week, from the first day an add still counts."""
-    days = move_days(league, calendar, me, txs)
+    """Best adds for the next day an add still counts, judged on that day as the streaming spot is."""
+    days = move_days(league, calendar, me, txs)[:STREAM_HORIZON]
     if not days:
         return {"days": [], "list": []}
     ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
     pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
-    base, rows = add_options(ids, days, pool, players, league["starting"], calendar)
-    return {"days": [str(d) for d in days], "base": round(base, 1), "list": [r for r in rows if r["gain"] > 0][:top]}
+    base, rows = add_options(ids, days, pool, players, league["starting"], calendar, stream_spots(players, ids))
+    return {"days": [str(d) for d in days], "base": round(base, 1), "spot": sorted(stream_spots(players, ids)),
+            "list": [r for r in rows if r["gain"] > 0][:top]}
 
 
 def week_plan(league, players, me, calendar, txs=()):
     """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
     counting from the day's first tip-off), and the lineup to set each day with the roster you
-    will have then. Each day takes the best add left for the rest of the week, so a streamer
-    added early can make way for another later. Re-planned on every refresh."""
+    will have then. Each day the streaming spot goes to the free agent who adds most to that day's
+    lineup (STREAM_HORIZON); a real player is dropped only if the gain beats his rest-of-season
+    value. Re-planned on every refresh."""
     days = week_days(calendar)
     if not days or calendar.today > calendar.end:
         return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
@@ -270,19 +289,22 @@ def week_plan(league, players, me, calendar, txs=()):
         0, int(acq["limit"]) - int((league["teams"][str(me)]["adds"] or {}).get(str(calendar.current_week() + 1), 0)))
     ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
     held = list(ids)
-    used, streamers, moves = set(ids), [], []
+    used, moves = set(ids), []
+    spot = stream_spots(players, ids)
     for i, d in enumerate(days):
         if d not in can_move or len(moves) >= cap:
             continue
         pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"] and p["id"] not in used]
-        _, rows = add_options(held, days[i:], pool, players, starting, calendar, streamers)
-        if not rows or rows[0]["net"] < PLAN_MIN_NET:
+        _, rows = add_options(held, days[i:i + STREAM_HORIZON], pool, players, starting, calendar, spot)
+        row = next((r for r in rows if r["ok"]), None)
+        if not row:
             continue
-        m = dict(rows[0], day=str(d), by=calendar.first_tip(d))
+        m = dict(row, day=str(d), by=calendar.first_tip(d))
         moves.append(m)
         held = [pid for pid in held if pid != m["drop"]] + [m["id"]]
         used |= {m["id"], m["drop"]}
-        streamers.append(m["id"])
+        if m["spot"]:
+            spot = (spot - {m["drop"]}) | {m["id"]}
 
     lineups, total, rosters = [], 0.0, list(ids)
     locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False)}
@@ -297,7 +319,8 @@ def week_plan(league, players, me, calendar, txs=()):
     now_pts, _, _ = project_days(ids, days, players, starting, calendar)
     return {"days": [str(d) for d in days], "moves": moves, "lineups": lineups, "points": round(total, 1),
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
-            "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day"))}
+            "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
+            "spot": sorted(stream_spots(players, ids))}
 
 
 def day_lineup(ids, day, players, starting, calendar, slots_now):
@@ -537,7 +560,7 @@ def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_l
     if plan is not None:
         if plan["moves"]:
             acts.append(plan_action(league, players, plan, calendar))
-    elif stream_list["list"] and stream_list["list"][0]["net"] >= PLAN_MIN_NET:
+    elif stream_list["list"] and stream_list["list"][0].get("ok"):
         acts.append(stream_action(league, players, stream_list, calendar))
     if ups["list"] and ups["list"][0]["gain"] >= 25:
         acts.append(upgrade_action(players, ups, waivers))
@@ -583,8 +606,11 @@ def plan_action(league, players, plan, calendar):
         " (%s)" % clock(first) if first else "")
     if league["acq"].get("per_day"):
         why += " Uses your one add for that day."
-    detail = "%s, %s expected to start, %+.0f points this week." % (
-        plural(m["games"], "game"), n1(m["starts"]), m["gain"])
+    detail = "%s for that day's lineup%s." % ("%+.0f points" % m["gain"],
+        " (%s expected to start)" % n1(m["starts"]) if m["games"] else "")
+    if m["spot"]:
+        detail += (" %s holds your streaming spot: turning it over to a new free agent most days beats holding "
+                   "him (season test: +15 to +47 points a week)." % name(players, m["drop"]))
     if m["ros_cost"] >= 1:
         detail += " Costs %.0f of rest-of-season value." % m["ros_cost"]
     if later:
@@ -593,8 +619,8 @@ def plan_action(league, players, plan, calendar):
     when = "today" if day == calendar.today else day.strftime("%a %b %-d")
     return {"kind": "stream", "urgency": "now" if first and first - calendar.now <= 86400 else "soon", "by": first,
             "player": m["id"], "drop": m["drop"],
-            "title": "Stream %s for %s, counting from %s (+%.0f this week)" % (name(players, m["id"]), name(players, m["drop"]),
-                                                                            when, m["net"]),
+            "title": "Stream %s for %s, counting from %s (+%.0f that day)" % (name(players, m["id"]), name(players, m["drop"]),
+                                                                           when, m["net"]),
             "detail": detail, "why": why}
 
 
@@ -671,6 +697,9 @@ def stash_action(league, players, me, stash_list, waivers, calendar):
     else:
         steps.append("Add him. If ESPN asks for a drop, pick %s." % dname)
     steps.append("Once he is yours, move him to IR.")
+    if league["acq"].get("per_day"):
+        steps.append("He uses your one add for that day, so any stream on the to-do list waits a day; the stash is "
+                     "worth more over the season than one day of streaming.")
     if drop and refill and value - swap > 0:
         refill_step = "If you dropped %s, use the open spot on the best free agent (%s right now)." % (dname, name(players, refill))
         if calendar.today < calendar.start and league["acq"].get("per_day"):

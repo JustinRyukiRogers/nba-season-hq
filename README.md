@@ -17,7 +17,10 @@ passphrase, which is `SITE_PASSPHRASE` in `.env`).
   a waiver run, or others may get there first), **Optional** (a small gain, or no one is racing
   you), **FYI**. Then the matchup: score, projection from both sides' best daily lineups, starts left.
 - **Week**: the rest of the matchup week day by day. The adds worth making and the deadline for
-  each (one a day, counting from that day's first tip-off), then each day's lineup with the roster
+  each (one a day, counting from that day's first tip-off). Your lowest-valued healthy player's
+  spot is a streaming spot, turned over most days to the free agent who adds most to that day's
+  lineup: in a season simulation on 2026-10-19 that beat holding Saddiq Bey by 15 to 47 points a
+  week in every case tried (a second streaming spot did not pay in the pessimistic case). Then each day's lineup with the roster
   you will have that day: who starts in which slot, who sits and how often he gets in when a
   starter sits, who has no game.
 - **Roster**: three views. *Values*: slot, status, next game, expected starts this week (of his
@@ -197,6 +200,7 @@ runs of the room. The room model is fitted on this league's 2024-2026 drafts.
     python3 research/draft_sim.py        # does the pick logic out-draft this league (takes minutes)
     python3 research/role_and_impact.py  # do last year's role and BPM add anything (they flag risk, not value)
     python3 research/roster_fit.py       # do positions, one-team stacks or the playoff schedule matter (takes minutes)
+    python3 research/stream_spot.py      # hold your weakest player, or stream his spot (needs the cookies)
     python3 tests/test_engine.py         # engine and live-sync checks
 
 The per-game corrections improve accuracy out of sample. The research notes and the live-sync

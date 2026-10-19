@@ -252,17 +252,19 @@ function viewWeek() {
       const p = P(m.id);
       out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
         <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, drop ${esc(P(m.drop).name)}</div>
-        <div class="d">${plural(m.games, 'game')} from that day, ${n1(m.starts)} expected to start for you: ${signed(m.gain)} points this week${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}.</div>
+        <div class="d">${signed(m.gain)} points in that day's lineup${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}.</div>
         <div class="who">${pill(m.id, 'add')}${pill(m.drop, 'drop')}</div></div>`);
     }
   } else {
     const s = d.streams && d.streams.list[0];
-    out.push(`<div class="card muted">No add beats holding your roster this week.${s ? ` The best one, ${esc(P(s.id).name)} for ${esc(P(s.drop).name)},
-      adds ${n0(s.gain)} points this week but gives up ${n0(s.ros_cost)} of rest-of-season value.` : ''}</div>`);
+    out.push(`<div class="card muted">No add is worth making for the rest of this week.</div>`);
   }
-  out.push(`<p class="small muted">One add a day. An add counts from the next day whose first game has not tipped off (ESPN locks rosters
-    at the day's first game), so each add above has to be made before that day's first tip. Each day takes the best add left for the rest of the
-    week, against your three lowest-valued players or a streamer added earlier; it is re-planned on every refresh.
+  const spot = (W.spot || []).map(id => esc(P(id).name)).join(', ');
+  out.push(`<p class="small muted"><b>Streaming spot${spot ? ': ' + spot : ''}.</b> Your lowest-valued healthy player's roster spot goes to a new
+    free agent most days: whoever adds most to that day's lineup. Tested over the whole season with this roster, that beat holding him by
+    15 to 47 points a week, even assuming other teams take the best free agents and free agents score 15% under projection.
+    One add a day; an add counts from the next day whose first game has not tipped off (ESPN locks rosters at the day's first game), so each add
+    above has to be made before that day's first tip. Re-planned on every refresh.
     ${W.preseason_add ? 'ESPN may count the days before the opener as one day for the one-add limit, so an add made before the opener can use up opening day\'s.' : ''}</p>`);
 
   for (const day of W.lineups) {
@@ -492,8 +494,9 @@ function waiverList() {
     const st = d.streams;
     if (!st.days.length) return `<div class="empty">No days left in this matchup week.</div>`;
     const list = st.list.filter(r => passes(P(r.id)));
-    return `<p class="lead small">Best single pickup for the rest of this week (${st.days.map(dayShort).join(', ')}): what he adds to your daily lineups (<b>starts</b>: games he would start for you), against
-      the best of your ${3} lowest-valued players to drop. <b>Cost</b> is rest-of-season value given up, if the dropped player is worth more.
+    return `<p class="lead small">Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}): what he adds to that day's lineup, in place of your
+      streaming spot${(st.spot || []).length ? ` (${st.spot.map(id => esc(P(id).name)).join(', ')})` : ''} or one of your lowest-valued players. <b>Cost</b> is rest-of-season value given up
+      when the player dropped is a real one worth more; the streaming spot costs nothing.
       Only free agents you can add right away are listed.</p>
       <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
         { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>`;

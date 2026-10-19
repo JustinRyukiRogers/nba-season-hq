@@ -250,10 +250,13 @@ def test_week_plan_and_move_days():
     plan = advice.week_plan(lg, players, 3, cal, [])
     m = plan["moves"][0]
     assert (m["id"], m["drop"], m["day"]) == (9, 1, str(start + timedelta(days=1))), m
-    assert m["gain"] == 3 * 30.0 - 2 * 20.0 and m["ros_cost"] == 5.0, m
+    assert m["spot"] and m["ros_cost"] == 0.0, "the lowest-valued player holds the streaming spot: dropping him costs nothing"
+    assert m["gain"] == 30.0 - 20.0, "judged on the day it counts from: %s" % m
     day1 = plan["lineups"][1]
     assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
-    assert plan["points"] == plan["points_now"] + m["gain"]
+    assert plan["points"] == plan["points_now"] + 3 * 30.0 - 2 * 20.0
+    players[1]["ros"]["out"] = True
+    assert advice.stream_spots(players, [1, 2]) == {2}, "an Out player goes to IR, not the streaming spot"
     cal.now = 0
     txs = [{"team": 3, "adds": [5], "at": int(datetime(2026, 11, 2, 9, tzinfo=model.ET).timestamp())}]
     assert advice.move_days(lg, cal, 3, txs)[0] == start + timedelta(days=1), "today's one add is used up"
