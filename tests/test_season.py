@@ -300,6 +300,36 @@ def test_trade_helpers():
 
 
 
+def test_hunches():
+    start = date(2026, 11, 2)
+    day = start + timedelta(days=1)
+    cal = FakeCal(start, 3, {"BOS": [1], "LAL": [1], "MIA": [0, 2]}, now=10_000 + 60)
+    stamp = lambda days_ago: datetime.fromtimestamp(cal.now - days_ago * 86400, model.ET).strftime("%Y-%m-%dT%H:%MZ")
+    players = {1: player(1, team="MIA", value=50.0, fppg=20.0), 2: player(2, team="MIA", value=300.0, fppg=40.0),
+               10: player(10, team="BOS", owner=0, fa="FREEAGENT", value=20.0, fppg=22.0),   # minutes jump
+               11: player(11, team="BOS", owner=0, fa="FREEAGENT", value=20.0, fppg=22.0),   # nothing new
+               12: player(12, team="LAL", owner=0, fa="FREEAGENT", value=20.0, fppg=22.0),   # starter newly out
+               20: player(20, team="LAL", owner=5, out=True, back=str(start + timedelta(days=9))),
+               21: player(21, team="BOS", owner=5, out=True, back=str(day))}                 # back by that day
+    players[10]["stats"], players[10]["recent"] = {"proj": [70, 20.0, 22.0]}, [[1, 35.0, 31], [0, 30.0, 29]]
+    players[11]["stats"], players[11]["recent"] = {"proj": [70, 28.0, 22.0]}, [[1, 22.0, 29]]
+    players[20]["stats"], players[20]["inj"] = {"proj": [70, 33.0, 40.0]}, {"type": "Knee", "updated": stamp(1)}
+    players[21]["stats"], players[21]["inj"] = {"proj": [70, 33.0, 40.0]}, {"type": "Ankle", "updated": stamp(1)}
+    for p in players.values():
+        p["odds"], p["own_chg"] = {str(g["date"]): 1.0 for g in cal.by_team[p["team"]]}, 0.0
+    lg = league_with([(1, "UT"), (2, "UT")])
+    lg["starting"] = ["UT", "UT"]
+    h = advice.hunches(lg, players, 3, cal, {"days": [str(day)], "list": [{"net": 25.0}]})
+    signs = {r["id"]: r["signs"] for r in h["list"]}
+    assert set(signs) == {10, 12}, "a minutes jump and a starter newly out are hunches; a teammate back that day is not: %s" % signs
+    assert "30 min a game over his last 2 games" in signs[10][0] and "P20 (knee, out" in signs[12][0], signs
+    r = next(r for r in h["list"] if r["id"] == 12)
+    assert r["drop"] == 1 and r["net"] == 22.0 and r["vs_top"] == 22.0 - 25.0, r
+    players[20]["inj"]["updated"] = stamp(advice.HUNCH_NEWS_DAYS + 1)
+    assert {r["id"] for r in advice.hunches(lg, players, 3, cal, {"days": [str(day)], "list": []})["list"]} == {10}, \
+        "an injury from last week is already in the projections"
+
+
 def test_upgrades_skip_streaming_spot():
     players = {1: player(1, value=40.0), 2: player(2, value=160.0), 3: player(3, value=900.0),
                9: player(9, value=120.0, owner=0, fa="WAIVERS")}

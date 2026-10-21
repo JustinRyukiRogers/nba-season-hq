@@ -45,6 +45,13 @@ HOT_ADDS = 2.0            # rise in % owned in a day: he is being added fast and
 HOT_GAMES, HOT_SHARE = 8, 0.15    # points per game 15% off the projection over 8+ games
 ROLE_GAMES, ROLE_MINUTES = 3, 4.0  # minutes per game 4+ off over 3+ games (minutes settle fastest)
 
+# Hunch streams: signs of a bigger role than the projections know about. Judgment calls, untested.
+HUNCH_GAMES = 3           # his last few games, for minutes
+HUNCH_MINUTES = 5.0       # minutes a game above ESPN's projection over those games
+HUNCH_MATE_MINUTES = 24.0  # a teammate projected for this many minutes whose absence opens a role
+HUNCH_NEWS_DAYS = 4       # an injury report updated this recently is news, not yet in the projections
+HUNCH_ADDS = 1.0          # rise in % owned in a day across ESPN: others smell something
+
 
 def roster(league, team_id, include_ir=True):
     return [e for e in league["teams"][str(team_id)]["roster"] if include_ir or e["slot"] != "IR"]
@@ -293,6 +300,61 @@ def streams(league, players, me, calendar, txs=(), top=10):
     base, rows = add_options(ids, days, pool, players, league["starting"], calendar, spot, room)
     return {"days": [str(d) for d in days], "base": round(base, 1), "spot": sorted(spot), "open": room,
             "list": [r for r in rows if r["gain"] > 0][:top]}
+
+
+def hunches(league, players, me, calendar, stream_list, top=8):
+    """Streams on a hunch: free agents playing on the stream day whose role may be bigger than the
+    model knows (it reads projections, not minutes or teammates' injuries). Signs: minutes over his
+    last few games above ESPN's projection, a teammate at his positions newly ruled out, or adds
+    across ESPN. Each is scored as streams are, so you see what the hunch costs against the top pick."""
+    if not stream_list["days"]:
+        return {"days": [], "list": []}
+    day = parse_day(stream_list["days"][0])
+    fresh = calendar.now - HUNCH_NEWS_DAYS * 86400
+    signs = {}
+    for p in free_agents(players, instant_only=True):
+        if p["ros"]["out"] or not p["odds"].get(str(day)):
+            continue
+        why = []
+        proj = (p.get("stats") or {}).get("proj")
+        games = [g for g in p.get("recent") or [] if g[2]][:HUNCH_GAMES]
+        if proj and games:
+            mins = sum(g[2] for g in games) / len(games)
+            if mins - proj[1] >= HUNCH_MINUTES:
+                why.append("%.0f min a game over his last %s, ESPN projects %.0f; %.1f fantasy points a game" % (
+                    mins, plural(len(games), "game"), proj[1], sum(g[1] for g in games) / len(games)))
+        for q in players.values():
+            inj = q.get("inj") or {}
+            back = q["ros"]["back"]
+            if (q["team"] != p["team"] or q["id"] == p["id"] or not q["ros"]["out"] or (back and parse_day(back) <= day)
+                    or not set(q["pos"]) & set(p["pos"])
+                    or ((q.get("stats") or {}).get("proj") or [0, 0])[1] < HUNCH_MATE_MINUTES or not _since(inj.get("updated"), fresh)):
+                continue
+            why.append("%s (%s, out%s) plays his position" % (
+                q["name"], (inj.get("type") or "injury").lower(),
+                " until ~%s" % parse_day(back).strftime("%b %-d") if back else ""))
+        if p["own_chg"] >= HUNCH_ADDS:
+            why.append("%+.1f%% owned across ESPN today" % p["own_chg"])
+        if why:
+            signs[p["id"]] = why
+    if not signs:
+        return {"days": stream_list["days"], "list": []}
+    ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
+    room = open_room(league, ids)
+    _, rows = add_options(ids, [day], [players[pid] for pid in signs], players, league["starting"], calendar,
+                          stream_spots(players, ids, room), room)
+    best = stream_list["list"][0]["net"] if stream_list["list"] else 0.0
+    for r in rows:
+        r["signs"], r["vs_top"] = signs[r["id"]], round(r["net"] - best, 1)
+    return {"days": stream_list["days"], "list": rows[:top]}
+
+
+def _since(stamp, cutoff):
+    """Whether an ESPN timestamp ("2026-10-20T23:50Z") is at or after `cutoff` (epoch seconds)."""
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() >= cutoff
+    except (AttributeError, ValueError):
+        return False
 
 
 def week_plan(league, players, me, calendar, txs=(), stash=None):

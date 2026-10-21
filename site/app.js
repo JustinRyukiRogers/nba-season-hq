@@ -15,6 +15,24 @@ const $ = (sel, el = document) => el.querySelector(sel);
 // ---------- storage (best effort: private windows can refuse it) ----------
 function getItem(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function setItem(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+
+// ---------- to-dos hidden for the day (this browser only; back the next day if still there) ----------
+function actKey(a) {
+  return [a.kind, a.player, a.drop, a.other, a.give, a.get, a.start, a.sit].map(x => [].concat(x ?? '').join('+')).join('|');
+}
+function hiddenActs() {
+  try { return JSON.parse(getItem('hq.hidden') || '{}'); } catch (e) { return {}; }
+}
+function setHidden(key, on) {
+  const today = S.data.calendar.today, h = hiddenActs();
+  for (const k of Object.keys(h)) if (h[k] !== today) delete h[k];
+  if (on) h[key] = today; else if (key) delete h[key]; else for (const k of Object.keys(h)) delete h[k];
+  setItem('hq.hidden', Object.keys(h).length ? JSON.stringify(h) : null);
+}
+function visibleActs() {
+  const today = S.data.calendar.today, h = hiddenActs();
+  return S.data.actions.filter(a => h[actKey(a)] !== today);
+}
 function getJSON(k) { try { return JSON.parse(getItem(k) || 'null'); } catch (e) { return null; } }
 
 // ---------- formatting ----------
@@ -110,7 +128,7 @@ function render() {
   const d = S.data;
   $('#title').textContent = d.league.name + ' · ' + abbr(me());
   freshness();
-  const urgent = d.actions.some(a => urgencyOf(a) === 'now');
+  const urgent = visibleActs().some(a => urgencyOf(a) === 'now');
   for (const b of document.querySelectorAll('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === S.tab);
     b.setAttribute('aria-selected', b.dataset.tab === S.tab);
@@ -141,9 +159,11 @@ function viewToday() {
       + `<div class="card">${S.changes.map(c => `<div>${c}</div>`).join('')}</div>`);
   }
   out.push('<h2>To do</h2>');
-  if (!d.actions.length) out.push('<div class="card muted">Nothing needs doing right now.</div>');
-  for (const a of d.actions) out.push(actionCard(a));
-  if (d.actions.length) {
+  const acts = visibleActs(), hidden = d.actions.length - acts.length;
+  if (!acts.length) out.push(`<div class="card muted">${hidden ? 'Nothing else needs doing today.' : 'Nothing needs doing right now.'}</div>`);
+  for (const a of acts) out.push(actionCard(a));
+  if (hidden) out.push(`<p class="small muted">${plural(hidden, 'to-do')} hidden until tomorrow. <a href="#" data-unhide="1">Show</a></p>`);
+  if (acts.length) {
     out.push(`<p class="small muted">${URGENCY.now}: it costs points or blocks you today. ${URGENCY.soon}: it has a deadline, or someone may get there first.
       ${URGENCY.optional}: a small gain, or no one is racing you.</p>`);
   }
@@ -174,7 +194,8 @@ function actionCard(a) {
   for (const id of a.give || []) pills.push(pill(id, 'give'));
   for (const id of a.get || []) pills.push(pill(id, 'get'));
   const chip = `<span class="urg ${u}">${URGENCY[u]}${a.by ? ' · by ' + esc(whenLabel(a.by)) : ''}</span>`;
-  return `<div class="card act ${u}"><div class="t">${chip}${esc(a.title)}</div>`
+  const x = `<button class="dismiss" data-dismiss="${esc(actKey(a))}" title="Done or not doing it: hide until tomorrow" aria-label="Hide until tomorrow">×</button>`;
+  return `<div class="card act ${u}">${x}<div class="t">${chip}${esc(a.title)}</div>`
     + (a.detail ? `<div class="d">${esc(a.detail)}</div>` : '')
     + (a.steps && a.steps.length ? `<ol class="steps">${a.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
     + (pills.length ? `<div class="who">${pills.join('')}</div>` : '')
@@ -507,13 +528,28 @@ function waiverList() {
       when the player dropped is a real one worth more; the streaming spot costs nothing.
       Only free agents you can add right away are listed.</p>
       <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
-        { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>`;
+        { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>
+      ${hunchList()}`;
   }
   // trending
   const list = freeAgents().filter(p => passes(p) && p.own_chg).sort((a, b) => b.own_chg - a.own_chg).slice(0, 40);
   return `<p class="lead small">Free agents being added fastest across all ESPN leagues (change in % owned).</p>
     <div class="rows">${list.map(p => row(p, [['owned', n1(p.own) + '%', '', true], ['change', (p.own_chg > 0 ? '+' : '') + n1(p.own_chg), p.own_chg > 0 ? 'pos' : 'neg'], ['ROS', n1(p.ros.fppg)], ['value', n0(p.ros.value)]],
       { meta: meta(p) + ' · ' + esc(nextGame(p)) })).join('') || '<div class="empty">No one matches.</div>'}</div>`;
+}
+
+function hunchList() {
+  const H = S.data.hunches;
+  if (!H || !H.days.length) return '';
+  const list = H.list.filter(r => passes(P(r.id)));
+  return `<h2>On a hunch <span class="sub">${H.days.map(dayShort).join(', ')}</span></h2>
+    <p class="lead small">Free agents playing that day whose role may be bigger than the projections know: minutes over their last few games
+      well above ESPN's projection, a teammate at their position newly ruled out, or a jump in adds across ESPN. The points are still the model's,
+      which does not read those signs; <b>vs top</b> is what the hunch costs against the best stream above if he only plays to projection.
+      A stream lasts a day, so a wrong hunch is cheap.</p>
+    <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['starts', n1(r.starts), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg'], ['vs top', signed(r.vs_top), r.vs_top >= 0 ? 'pos' : 'neg']],
+      { meta: meta(p) + ' · ' + esc(nextGame(p)) + (r.drop ? ' · drop ' + esc(P(r.drop).name) : ''), note: r.signs.map(esc).join('<br>') }); }).join('')
+      || '<div class="empty">No free agent playing that day shows a sign.</div>'}</div>`;
 }
 
 // ----- Injuries -----
@@ -705,8 +741,10 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],[data-goto],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
+    if (t.dataset.dismiss != null) { setHidden(t.dataset.dismiss, true); render(); return; }
+    if (t.dataset.unhide) { e.preventDefault(); setHidden(null, false); render(); return; }
     if (t.dataset.goto) { e.preventDefault(); S.tab = t.dataset.goto; setItem('hq.tab', S.tab); render(); window.scrollTo(0, 0); return; }
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }

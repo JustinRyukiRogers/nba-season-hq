@@ -125,6 +125,9 @@ p.lead { color: var(--ink-2); margin: 4px 0 10px; }
 .act.soon { border-left-color: var(--warning); }
 .act.optional { border-left-color: var(--accent); }
 .act .t { font-weight: 650; }
+.act { position: relative; }
+.act .dismiss { float: right; margin: -4px -4px 4px 8px; padding: 0 8px; border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1.4; }
+.act .dismiss:hover { color: var(--ink); background: var(--wash); }
 .act .d { color: var(--ink-2); margin-top: 3px; }
 .act .steps { margin: 8px 0 0; padding-left: 20px; }
 .act .steps li { margin: 3px 0; }

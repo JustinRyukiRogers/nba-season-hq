@@ -207,6 +207,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     ups = advice.upgrades(league, players, me)
     stash_list = advice.stash(league, players, me, free_ir)
     stream_list = advice.streams(league, players, me, calendar, txs)
+    hunch_list = advice.hunches(league, players, me, calendar, stream_list)
     on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
     clears = min((p["waiver_until"] for p in on_waivers if p["waiver_until"]), default=None)
     waivers = {"all_on_waivers": bool(fas) and len(on_waivers) == len(fas), "clears": clears,
@@ -239,6 +240,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     if opp:
         interesting |= {e["id"] for e in league["teams"][str(opp)]["roster"]}
     interesting |= {r["id"] for r in ups["list"]} | {r["id"] for r in stash_list["list"]} | {r["id"] for r in stream_list["list"]}
+    interesting |= {r["id"] for r in hunch_list["list"]}
     interesting |= {p["id"] for p in sorted(fas, key=lambda p: -p["ros"]["value"])[:40]}
     interesting |= {p["id"] for p in players.values() if p["owner"] and p["status"] != "ACTIVE"}
     news_cache = (read_json(CACHE / "news.json", {}) or {})
@@ -264,6 +266,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "priors_from": priors.get("board_generated")},
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
+        "hunches": hunch_list,
         "plan": plan, "trades": trades,
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
@@ -312,6 +315,10 @@ def summary(data):
             what = "IR stash" if m["kind"] == "stash" else "+%.0f that day" % m["gain"]
             print("  %s: add %s, drop %s (%s)" % (m["day"], pl[str(m["id"])]["name"],
                                                   pl[str(m["drop"])]["name"] if m["drop"] else "nobody: open spot", what))
+    if data["hunches"]["list"]:
+        print("\nstreams on a hunch (%s; net vs the top stream):" % data["hunches"]["days"][0])
+        for r in data["hunches"]["list"]:
+            print("  %-24s %+5.0f (%+.0f)  %s" % (pl[str(r["id"])]["name"], r["net"], r["vs_top"], "; ".join(r["signs"])))
     print("\ntrade ideas (your gain in season lineup points; theirs on ESPN's numbers):")
     for t in data["trades"]["list"][:6]:
         names = lambda ids: " + ".join(pl[str(i)]["name"] for i in ids)
