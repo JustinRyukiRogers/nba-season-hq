@@ -261,7 +261,12 @@ def test_week_plan_and_move_days():
     plan = advice.week_plan(lg, players, 3, cal, [])
     m = plan["moves"][0]
     assert (m["id"], m["drop"], m["day"]) == (9, 1, str(start + timedelta(days=1))), m
-    assert m["spot"] and m["ros_cost"] == 0.0, "the lowest-valued player holds the streaming spot: dropping him costs nothing"
+    assert m["spot"] and m["ros_cost"] == 2.5 and m["net"] == 7.5, "the streaming spot costs half the value given up: %s" % m
+    players[1]["ros"]["value"] = 80.0
+    held = advice.week_plan(lg, players, 3, cal, [])
+    assert not any(x["drop"] == 1 and x["day"] == m["day"] for x in held["moves"]), \
+        "a spot holder worth more for the season is not dropped for a day's +10"
+    players[1]["ros"]["value"] = 50.0
     assert m["gain"] == 30.0 - 20.0, "judged on the day it counts from: %s" % m
     day1 = plan["lineups"][1]
     assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
@@ -324,7 +329,7 @@ def test_hunches():
     assert set(signs) == {10, 12}, "a minutes jump and a starter newly out are hunches; a teammate back that day is not: %s" % signs
     assert "30 min a game over his last 2 games" in signs[10][0] and "P20 (knee, out" in signs[12][0], signs
     r = next(r for r in h["list"] if r["id"] == 12)
-    assert r["drop"] == 1 and r["net"] == 22.0 and r["vs_top"] == 22.0 - 25.0, r
+    assert r["drop"] == 1 and r["net"] == 22.0 - 0.5 * (50.0 - 20.0) and r["vs_top"] == r["net"] - 25.0, r
     players[20]["inj"]["updated"] = stamp(advice.HUNCH_NEWS_DAYS + 1)
     assert {r["id"] for r in advice.hunches(lg, players, 3, cal, {"days": [str(day)], "list": []})["list"]} == {10}, \
         "an injury from last week is already in the projections"

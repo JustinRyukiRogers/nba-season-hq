@@ -525,7 +525,7 @@ function waiverList() {
     const list = st.list.filter(r => passes(P(r.id)));
     return `<p class="lead small">Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}): what he adds to that day's lineup, in place of your
       streaming spot${(st.spot || []).length ? ` (${st.spot.map(id => esc(P(id).name)).join(', ')})` : ''} or one of your lowest-valued players. <b>Cost</b> is rest-of-season value given up
-      when the player dropped is a real one worth more; the streaming spot costs nothing.
+      when the player dropped is a real one worth more; for the streaming spot it is half the season value given up, and negative when the add is worth more.
       Only free agents you can add right away are listed.</p>
       <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
         { meta: meta(p) + ' · drop ' + esc(P(r.drop).name) }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>

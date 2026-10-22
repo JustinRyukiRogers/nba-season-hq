@@ -20,9 +20,15 @@ PLAN_MIN_NET = 10.0       # points, net of rest-of-season value given up, before
 # teams take the best 50 free agents and free agents score 15% under projection), and won every week.
 # A second spot was worth nothing in the pessimistic case. Picking the add on the next day alone
 # beat looking 2, 3 or 7 days ahead, and the minimum gain barely mattered (1 to 10 points).
+# Changed 2026-10-21 at the user's request (they want holdable players, not a new one every day):
+# dropping the spot's holder now costs half the rest-of-season value given up (credits half of any
+# gained). Before, the spot was free and the plan turned 100-value free agents (Holiday, Tre Jones,
+# Carter) over a day apart. Same season test with every free agent available: about 70 adds a season
+# instead of 118, at +30 to +47 points a week over holding instead of +55 to +74.
 STREAM_SPOTS = 1
 STREAM_HORIZON = 1        # days an add is judged on
 STREAM_MIN_GAIN = 5.0     # points before a streaming-spot add is worth the move
+SPOT_VALUE_SHARE = 0.5    # share of the rest-of-season value change that counts when the spot turns over
 
 # Trade ideas: a quick screen on rest-of-season value, then the best few per team re-scored with
 # the lineup simulation for both sides.
@@ -259,8 +265,10 @@ def add_options(ids, days, pool, players, starting, calendar, free=(), open_spot
     """Every free agent in `pool` tried in place of each of your lowest-valued players and the
     streaming spot (`free`), over `days` of simulated daily lineups. -> (points now, [row for each
     free agent's best drop, best first]). net = points gained minus the rest-of-season value given
-    up when the player dropped is worth more; nothing is given up for the streaming spot. With an
-    open roster spot, an add needs no drop (drop None)."""
+    up when the player dropped is worth more. For the streaming spot (or an open roster spot, worth
+    nothing) the cost is SPOT_VALUE_SHARE of the value change either way, so a holdable player is not
+    turned over for a day's gain, and adding one is credited. With an open roster spot, an add needs
+    no drop (drop None)."""
     base, _, _ = project_days(ids, days, players, starting, calendar)
 
     def horizon_points(p):
@@ -278,7 +286,8 @@ def add_options(ids, days, pool, players, starting, calendar, free=(), open_spot
             alt, _, by = project_days([pid for pid in ids if pid != x] + [c["id"]], days, players, starting, calendar)
             gain = alt - base
             spot = x is None or x in free
-            cost = 0.0 if spot else max(0.0, players[x]["ros"]["value"] - c["ros"]["value"])
+            held = players[x]["ros"]["value"] if x is not None else 0.0
+            cost = SPOT_VALUE_SHARE * (held - c["ros"]["value"]) if spot else max(0.0, held - c["ros"]["value"])
             row = {"kind": "add", "id": c["id"], "drop": x, "spot": spot, "gain": round(gain, 1), "ros_cost": round(cost, 1),
                    "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
                    "starts": round(by.get(c["id"], [0.0])[0], 1)}
@@ -361,7 +370,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
     """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
     counting from the day's first tip-off), and the lineup to set each day with the roster you
     will have then. Each day the streaming spot goes to the free agent who adds most to that day's
-    lineup (STREAM_HORIZON); a real player is dropped only if the gain beats his rest-of-season
+    lineup (STREAM_HORIZON), counting half the season value changed (SPOT_VALUE_SHARE); a real player is dropped only if the gain beats his rest-of-season
     value. stash: {"id", "drop"} of an IR stash to make first; it takes the first day's add, and
     the spot it frees (when ESPN wants a drop for it) is streamed from the next day. Re-planned on
     every refresh."""
@@ -718,10 +727,11 @@ def plan_action(league, players, plan, calendar):
     if m["drop"] is None:
         detail += " It fills the spot opened by the IR stash, so nothing is dropped."
     elif m["spot"]:
-        detail += (" %s holds your streaming spot: turning it over to a new free agent most days beats holding "
-                   "him (season test: +15 to +47 points a week)." % name(players, m["drop"]))
+        detail += " %s holds your streaming spot." % name(players, m["drop"])
     if m["ros_cost"] >= 1:
         detail += " Costs %.0f of rest-of-season value." % m["ros_cost"]
+    elif m["ros_cost"] <= -1:
+        detail += " Credited %.0f for being worth more over the season." % -m["ros_cost"]
     if later:
         detail += " Then: " + "; ".join("%s add %s for %s" % (parse_day(x["day"]).strftime("%a"), name(players, x["id"]),
                                                              name(players, x["drop"]) if x["drop"] else "the open spot")
@@ -729,8 +739,8 @@ def plan_action(league, players, plan, calendar):
     when = "today" if day == calendar.today else day.strftime("%a %b %-d")
     return {"kind": "stream", "urgency": "now" if first and first - calendar.now <= 86400 else "soon", "by": first,
             "player": m["id"], "drop": m["drop"],
-            "title": "Stream %s %s, counting from %s (+%.0f that day)" % (
-                name(players, m["id"]), "for %s" % name(players, m["drop"]) if m["drop"] else "into the open spot", when, m["net"]),
+            "title": "Add %s %s, counting from %s (%+.0f that day)" % (
+                name(players, m["id"]), "for %s" % name(players, m["drop"]) if m["drop"] else "into the open spot", when, m["gain"]),
             "detail": detail, "why": why}
 
 
