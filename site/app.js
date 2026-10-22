@@ -1,10 +1,11 @@
 'use strict';
-// Season HQ: renders the refresh's data (site/data.json, encrypted as data.enc when hosted) in seven
+// Season HQ: renders the refresh's data (site/data.json, encrypted as data.enc when hosted) in eight
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
   data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
+  st: { range: 'week', who: 'mine', per: 'game', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
 };
 const TZ = 'America/New_York';
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -134,7 +135,7 @@ function render() {
     b.setAttribute('aria-selected', b.dataset.tab === S.tab);
     if (b.dataset.tab === 'today') b.innerHTML = 'Today' + (urgent ? '<span class="dot" title="Something needs doing"></span>' : '');
   }
-  const views = { today: viewToday, week: viewWeek, roster: viewRoster, waivers: viewWaivers, trades: viewTrades, injuries: viewInjuries, league: viewLeague };
+  const views = { today: viewToday, week: viewWeek, roster: viewRoster, waivers: viewWaivers, trades: viewTrades, stats: viewStats, injuries: viewInjuries, league: viewLeague };
   $('#view').innerHTML = views[S.tab]();
 }
 
@@ -355,6 +356,124 @@ function viewTrades() {
     No one is racing you for a trade, so these are optional; every week you wait is a week of the gain gone${T.deadline ? `. Trade deadline: ${esc(new Date(T.deadline * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: TZ }))} ET` : ''}.
     One player of yours appears in at most three ideas.</p>`);
   return out.join('');
+}
+
+// ----- Stats -----
+// Every finished game this season (d.gamelog: [days since opening night, fantasy points, minutes])
+// against the projection the dashboard started from: PROJ = projected points a game times games,
+// xMIN = projected minutes times games, xFP = minutes played times projected points a minute.
+function saveStats() {
+  const { range, who, per, onTeam, from, to } = S.st;
+  setItem('hq.stats', JSON.stringify({ range, who, per, onTeam, from, to }));
+}
+function dayIndex(iso) { return Math.round((isoDate(iso) - isoDate(S.data.calendar.start)) / 86400000); }
+function dayIso(i) { return new Date(isoDate(S.data.calendar.start).getTime() + i * 86400000).toISOString().slice(0, 10); }
+function etIso(ts) { return new Date(ts * 1000).toLocaleDateString('en-CA', { timeZone: TZ }); }
+
+function statsRange() {
+  const c = S.data.calendar, t = dayIndex(c.today), wk = c.week ?? 0;
+  const week = i => c.weeks[i] ? [dayIndex(c.weeks[i][0]), dayIndex(c.weeks[i][1])] : [0, -1];
+  switch (S.st.range) {
+    case 'week': return week(wk);
+    case 'lastweek': return week(wk - 1);
+    case '7': return [t - 7, t];
+    case '15': return [t - 15, t];
+    case '30': return [t - 30, t];
+    case 'custom': return [S.st.from ? dayIndex(S.st.from) : 0, S.st.to ? dayIndex(S.st.to) : t];
+    default: return [0, t];
+  }
+}
+
+function statsPlayers() {
+  const d = S.data, who = S.st.who;
+  const onTeam = id => (team(id) || { roster: [] }).roster.map(e => [e.id, e]);
+  if (who === 'mine') return onTeam(me());
+  if (who === 'opp') return d.matchup ? onTeam(d.matchup.opp) : [];
+  if (who.startsWith('t')) return onTeam(Number(who.slice(1)));
+  const ps = Object.values(d.players).filter(p => who === 'all' || (who === 'fa' ? !p.owner : !!p.owner));
+  return ps.map(p => [p.id, null]);
+}
+
+function statsRows() {
+  const d = S.data, [lo, hi] = statsRange(), log = d.gamelog || {};
+  const rows = [];
+  for (const [id, entry] of statsPlayers()) {
+    const p = P(id);
+    if (!p) continue;
+    let first = lo;
+    if (entry && S.st.onTeam && entry.acquired !== 'DRAFT' && entry.since) first = Math.max(lo, dayIndex(etIso(entry.since)) + 1);
+    const games = (log[String(id)] || []).filter(g => g[0] >= first && g[0] <= hi);
+    const proj = p.ros.prior, pm = p.proj_mpg;
+    const r = { p, gp: games.length, min: 0, fp: 0, proj: proj * games.length, xmin: pm ? pm * games.length : null, xfp: pm ? 0 : null };
+    for (const [, fp, min] of games) {
+      r.fp += fp; r.min += min;
+      if (pm) r.xfp += min * proj / pm;
+    }
+    r.dfp = r.xfp == null ? null : r.fp - r.xfp;
+    rows.push(r);
+  }
+  return rows;
+}
+
+function viewStats() {
+  const d = S.data, c = d.calendar, wk = c.week ?? 0;
+  const ranges = [['week', 'This matchup'], ['lastweek', 'Last matchup'], ['7', '7 days'], ['15', '15 days'], ['30', '30 days'], ['season', 'Season']]
+    .filter(([k]) => k !== 'lastweek' || wk > 0)
+    .map(([k, l]) => `<button data-srange="${k}" class="${S.st.range === k ? 'on' : ''}">${l}</button>`).join('');
+  const per = [['game', 'Per game'], ['total', 'Totals']]
+    .map(([k, l]) => `<button data-sper="${k}" class="${S.st.per === k ? 'on' : ''}">${l}</button>`).join('');
+  const opp = d.matchup ? team(d.matchup.opp) : null;
+  const teams = Object.values(d.league.teams).filter(t => t.id !== me() && (!opp || t.id !== opp.id))
+    .sort((a, b) => a.abbrev.localeCompare(b.abbrev));
+  const opt = (v, l) => `<option value="${v}"${S.st.who === v ? ' selected' : ''}>${esc(l)}</option>`;
+  const whoSel = `<select id="swho">${opt('mine', 'My roster')}${opp ? opt('opp', 'Opponent: ' + opp.abbrev) : ''}${opt('rostered', 'All rostered')}${opt('fa', 'Free agents')}${opt('all', 'Everyone')}
+    ${teams.map(t => opt('t' + t.id, t.abbrev + ' · ' + t.name)).join('')}</select>`;
+  const pos = ['', 'PG', 'SG', 'SF', 'PF', 'C']
+    .map(k => `<button data-pos="${k}" class="${S.pos === k ? 'on' : ''}">${k || 'All'}</button>`).join('');
+  const [lo, hi] = statsRange();
+  const isTeam = ['mine', 'opp'].includes(S.st.who) || S.st.who.startsWith('t');
+  return `<div class="toolbar"><div class="seg">${ranges}</div></div>
+    <div class="toolbar">${whoSel}<div class="seg">${per}</div>
+      <label class="check small">From <input type="date" id="sfrom" value="${dayIso(Math.max(0, lo))}" min="${c.start}" max="${c.today}"></label>
+      <label class="check small">to <input type="date" id="sto" value="${dayIso(Math.min(hi, dayIndex(c.today)))}" min="${c.start}" max="${c.today}"></label></div>
+    <div class="toolbar"><div class="seg">${pos}</div>
+      ${isTeam ? `<label class="check"><input type="checkbox" id="sonteam" ${S.st.onTeam ? 'checked' : ''}> Only games while on this team</label>` : ''}
+      <input type="search" id="sq" placeholder="Search players or teams" value="${esc(S.q)}" autocomplete="off" spellcheck="false"></div>
+    <div id="slist">${statsTable()}</div>
+    <p class="small muted"><b>PROJ</b>: his projected points a game (the preseason number the dashboard starts from) times games played.
+    <b>xMIN</b>: projected minutes times games. <b>xFP</b>: the minutes he actually played times his projected points a minute, what the
+    projection says those minutes were worth. So <b>xFP − PROJ</b> is the role (more or fewer minutes than expected) and <b>FP − xFP</b>
+    (the <b>vs xFP</b> column) is what he did with the minutes. A game counts once it has finished (3½ hours after tip-off), and every game
+    he played is counted, started or benched, so a team's FP here is not its matchup score.
+    ${isTeam ? 'Players acquired by trade or pickup count from the day after they joined when the box is ticked (ESPN does not say which game an add first counted for).' : ''}</p>`;
+}
+
+function statsTable() {
+  const per = S.st.per === 'game';
+  const rows = statsRows().filter(r => passes(r.p) && (r.gp || ['mine', 'opp'].includes(S.st.who) || S.st.who.startsWith('t')));
+  const val = (r, k) => k === 'name' ? r.p.name : k === 'gp' ? r.gp
+    : r[k] == null ? null : per && k !== 'gp' ? (r.gp ? r[k] / r.gp : null) : r[k];
+  const { sort, dir } = S.st;
+  rows.sort((a, b) => {
+    const x = val(a, sort), y = val(b, sort);
+    if (x == null || y == null) return (x == null) - (y == null);
+    return (sort === 'name' ? x.localeCompare(y) : x - y) * dir || b.gp - a.gp;
+  });
+  const shown = rows.slice(0, 200);
+  const cols = [['gp', 'GP'], ['min', 'MIN'], ['xmin', 'xMIN'], ['fp', 'FP'], ['proj', 'PROJ'], ['xfp', 'xFP'], ['dfp', 'vs xFP']];
+  const fmt = (k, x) => x == null ? '–' : k === 'gp' ? x : k === 'dfp' ? `<span class="${x > 0.5 ? 'pos' : x < -0.5 ? 'neg' : ''}">${per ? signed1(x) : signed(x)}</span>` : per ? n1(x) : n0(x);
+  const head = `<tr><th data-ssort="name" class="sortable">Player${sort === 'name' ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>${cols.map(([k, l]) =>
+    `<th class="r sortable" data-ssort="${k}">${l}${sort === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr>`;
+  const body = shown.map(r => `<tr data-pid="${r.p.id}" class="${r.p.owner === me() ? 'mine' : ''}"><td><div class="nm">${esc(r.p.name)} ${statusChip(r.p)}</div>
+    <div class="meta">${meta(r.p)} · ${esc(ownerLabel(r.p))}</div></td>${cols.map(([k]) => `<td class="r">${fmt(k, val(r, k))}</td>`).join('')}</tr>`).join('');
+  const t = { gp: 0, min: 0, fp: 0, proj: 0, xmin: 0, xfp: 0 };
+  for (const r of rows) for (const k of Object.keys(t)) t[k] += r[k] || 0;
+  t.dfp = t.fp - t.xfp;
+  const tv = k => k === 'gp' ? t.gp : per ? (t.gp ? t[k] / t.gp : null) : t[k];
+  const foot = rows.length > 1 && t.gp ? `<tr class="total"><td><b>All ${rows.length}</b>${per ? '<div class="meta">per game, across their games</div>' : ''}</td>${cols.map(([k]) => `<td class="r"><b>${fmt(k, tv(k))}</b></td>`).join('')}</tr>` : '';
+  if (!rows.length) return '<div class="empty">No finished games in this range.</div>';
+  return `<div class="card scroll-x"><table class="tbl stats"><thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>
+    ${rows.length > shown.length ? `<p class="small muted">Showing the first ${shown.length} of ${rows.length}; sort or filter to see others.</p>` : ''}`;
 }
 
 // ----- Roster -----
@@ -730,6 +849,7 @@ function boot() {
   }
   S.tab = getItem('hq.tab') || 'today';
   S.rtab = getItem('hq.rtab') || 'values';
+  Object.assign(S.st, getJSON('hq.stats') || {});
 
   $('#tabs').addEventListener('click', e => {
     const b = e.target.closest('button[data-tab]');
@@ -741,8 +861,14 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-srange],[data-sper],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
+    if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
+    if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
+    if (t.dataset.ssort != null) {
+      S.st.dir = S.st.sort === t.dataset.ssort ? -S.st.dir : (t.dataset.ssort === 'name' ? 1 : -1);
+      S.st.sort = t.dataset.ssort; render(); return;
+    }
     if (t.dataset.dismiss != null) { setHidden(t.dataset.dismiss, true); render(); return; }
     if (t.dataset.unhide) { e.preventDefault(); setHidden(null, false); render(); return; }
     if (t.dataset.goto) { e.preventDefault(); S.tab = t.dataset.goto; setItem('hq.tab', S.tab); render(); window.scrollTo(0, 0); return; }
@@ -755,9 +881,15 @@ function boot() {
   });
   $('#view').addEventListener('input', e => {
     if (e.target.id === 'q') { S.q = e.target.value.trim(); $('#wlist').innerHTML = waiverList(); }
+    if (e.target.id === 'sq') { S.q = e.target.value.trim(); $('#slist').innerHTML = statsTable(); }
   });
   $('#view').addEventListener('change', e => {
     if (e.target.id === 'instant') { S.instant = e.target.checked; $('#wlist').innerHTML = waiverList(); }
+    if (e.target.id === 'swho') { S.st.who = e.target.value; saveStats(); render(); }
+    if (e.target.id === 'sonteam') { S.st.onTeam = e.target.checked; saveStats(); $('#slist').innerHTML = statsTable(); }
+    if (e.target.id === 'sfrom' || e.target.id === 'sto') {
+      S.st[e.target.id === 'sfrom' ? 'from' : 'to'] = e.target.value; S.st.range = 'custom'; saveStats(); render();
+    }
   });
   $('#drawer').addEventListener('click', e => { if (e.target.id === 'drawer-close') closeDrawer(); });
   $('#scrim').addEventListener('click', closeDrawer);

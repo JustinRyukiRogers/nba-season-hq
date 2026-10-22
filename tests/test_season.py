@@ -179,6 +179,22 @@ def test_recent_games_this_season_only():
     assert build.normalize_player(entry, ["PG"], {})["recent"] == [[2, 33.0, 31]], "last season's final games are not this season's"
 
 
+def test_gamelog():
+    from draftkit.config import SEASON
+    from seasonkit import build
+    now = 1_800_000_000
+    games = [{"id": 1, "tip": now - 86400}, {"id": 2, "tip": now - 3600}, {"id": 3, "tip": now - 2 * 86400}]
+    g = lambda gid, fp, mins, season=SEASON: {"seasonId": season, "statSourceId": 0, "statSplitTypeId": 5,
+                                             "externalId": str(gid), "appliedTotal": fp, "stats": {"40": mins} if mins else None}
+    pool = [{"player": {"id": 9, "stats": [g(1, 30.0, 28), g(2, 4.0, 6), g(3, 0.0, 0), g(4, 50.0, 30, SEASON - 1)]}}]
+    log = {"season": SEASON, "period": 0, "players": {"9": {"3": [12.0, 20.0]}}}
+    build.update_gamelog(log, pool, games, now)
+    assert log["players"] == {"9": {"1": [30.0, 28]}}, \
+        "finished games only: not one still being played, one he sat out, or last season's: %s" % log
+    cal = type("C", (), {"start": model.et_date(now - 2 * 86400)})()
+    assert build.page_gamelog(log, {9: {}}, games, cal) == {"9": [[1, 30.0, 28]]}
+
+
 def test_encryption_round_trip():
     node = shutil.which("node")
     if not node:

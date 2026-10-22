@@ -17,6 +17,10 @@ from . import advice, model, pull
 SITE = ROOT / "site"
 CACHE = ROOT / "cache"                 # public data only (news, schedule, injuries); safe to keep in CI
 NOTES = DATA / "season_notes.json"
+GAMELOG = CACHE / "gamelog.json"      # every pool player's finished games this season, for the Stats tab
+GAMELOG_SETTLE = 3.5 * 3600            # seconds after tip-off before a game counts as finished
+GAMELOG_OVERLAP = 3                    # scoring days re-read each refresh, for stat corrections
+GAMELOG_MAX = 200                      # most games asked for at once (a lost cache refills the season)
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MY_TEAM_FALLBACK = 3
 
@@ -155,10 +159,17 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     raw_league = pull.league(cookies)
     league = normalize_league(raw_league, cookies.get("SWID"))
     me = league["me"]
-    raw_pool = pull.pool(cookies)
+    log = read_json(GAMELOG, {}) or {}
+    if log.get("season") != SEASON:
+        log = {"season": SEASON, "period": 0, "players": {}}
+    sp_now = league["scoring_period"] or 1
+    raw_pool = pull.pool(cookies, games=max(2, min(GAMELOG_MAX, sp_now - log["period"] + GAMELOG_OVERLAP)))
     games = cached("schedule", pull.schedule, problems)
     injuries = {int(k): v for k, v in cached("injuries", pull.injuries, problems).items()}
     calendar = model.Calendar(games, league["periods"], league["final_period"], league["regular"], now=now)
+    update_gamelog(log, raw_pool, games, now)
+    log["period"] = sp_now
+    write_json(GAMELOG, log)
 
     ids = pull.stat_ids()
     players = {}
@@ -177,6 +188,8 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     notes = load_notes(players)
     for p in players.values():
         model.value_player(p, priors, injuries, notes, calendar, cal_fit)
+        p["proj_mpg"] = ((priors["players"].get(str(p["id"])) or {}).get("mpg")
+                         or ((p["stats"].get("proj") or [None, None])[1]))
         if p["id"] in notes and notes[p["id"]].get("note"):
             p["note"] = notes[p["id"]]["note"]
     fas = [p for p in players.values() if p["owner"] == 0]
@@ -271,12 +284,45 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
+        "gamelog": page_gamelog(log, players, games, calendar),
     }
     SITE.mkdir(exist_ok=True)
     write_json(SITE / "data.json", data)
     if verbose:
         summary(data)
     return data
+
+
+def update_gamelog(log, raw_pool, games, now):
+    """Add each pool player's finished games this season to the log: {player id: {game id: [fantasy
+    points, minutes]}}. A game counts once GAMELOG_SETTLE has passed since tip-off, so a game still
+    being played never shows as a short one; one he sat out (no minutes) is removed."""
+    tips = {g["id"]: g["tip"] for g in games}
+    for entry in raw_pool:
+        pl = entry["player"]
+        mine = log["players"].setdefault(str(pl["id"]), {})
+        for x in pl.get("stats") or []:
+            if x.get("statSplitTypeId") != 5 or x.get("statSourceId") != 0 or x.get("seasonId") != SEASON:
+                continue
+            gid = int(x.get("externalId") or 0)
+            if not tips.get(gid) or now - tips[gid] < GAMELOG_SETTLE:
+                continue
+            mins = (x.get("stats") or {}).get("40") or 0
+            if mins > 0:
+                mine[str(gid)] = [round(x.get("appliedTotal") or 0, 1), round(mins, 1)]
+            else:
+                mine.pop(str(gid), None)
+        if not mine:
+            del log["players"][str(pl["id"])]
+    return log
+
+
+def page_gamelog(log, players, games, calendar):
+    """The log for the page: {player id: [[days since opening night, fantasy points, minutes], ...]},
+    for players in the pool."""
+    day = {g["id"]: (model.et_date(g["tip"]) - calendar.start).days for g in games}
+    return {pid: sorted([day[int(gid)], fp, mins] for gid, (fp, mins) in gs.items() if int(gid) in day)
+            for pid, gs in log["players"].items() if int(pid) in players}
 
 
 def page_player(p, calendar):

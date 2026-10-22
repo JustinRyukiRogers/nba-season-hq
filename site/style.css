@@ -100,7 +100,7 @@ a { color: var(--accent-ink); }
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
-  .tabs button { flex: 1; padding: 8px 1px; font-size: 12px; min-width: 0; }
+  .tabs button { flex: 1; padding: 8px 1px; font-size: 11px; min-width: 0; }
   #main { padding-bottom: 76px; }
 }
 
@@ -208,6 +208,11 @@ p.lead { color: var(--ink-2); margin: 4px 0 10px; }
   flex: 1; min-width: 140px; padding: 7px 10px; border-radius: 9px;
   border: 1px solid var(--line-strong); background: var(--raised);
 }
+.toolbar select, .toolbar input[type=date] {
+  padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); font: inherit; font-size: 13px;
+}
+.toolbar .seg { max-width: 100%; overflow-x: auto; }
+.seg button { white-space: nowrap; flex-shrink: 0; }
 .check { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: 13px; white-space: nowrap; }
 .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
@@ -229,6 +234,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl td.r, .tbl th.r { text-align: right; white-space: nowrap; }
 .tbl tr.mine td { background: var(--mine); }
+.tbl th.sortable { cursor: pointer; user-select: none; }
+.tbl.stats td { vertical-align: middle; }
+.tbl.stats tr[data-pid] { cursor: pointer; }
+.tbl.stats .nm { font-weight: 600; white-space: nowrap; }
+.tbl.stats .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.tbl tr.total td { border-top: 1px solid var(--line-strong); background: var(--wash); }
 
 /* drawer */
 .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 30; }

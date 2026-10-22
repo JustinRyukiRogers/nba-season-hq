@@ -35,14 +35,14 @@ def league(cookies):
     return espn.get_json(espn.league_url(), {"view": views}, cookies=cookies, timeout=60)
 
 
-def pool(cookies, limit=POOL_LIMIT):
-    """Rostered players and the best-owned free agents, as this league sees them."""
+def pool(cookies, limit=POOL_LIMIT, games=2):
+    """Rostered players and the best-owned free agents, as this league sees them, each with his
+    `games` most recent games (last season's too, when this one has fewer; about 500 bytes each)."""
     filt = {"players": {
         "filterStatus": {"value": ["FREEAGENT", "WAIVERS", "ONTEAM"]},
         "limit": limit,
         "sortPercOwned": {"sortPriority": 1, "sortAsc": False},
-        # value 2 also returns each player's two most recent games
-        "filterStatsForTopScoringPeriodIds": {"value": 2, "additionalValue": list(stat_ids().values())},
+        "filterStatsForTopScoringPeriodIds": {"value": games, "additionalValue": list(stat_ids().values())},
     }}
     data = espn.get_json(espn.league_url(), {"view": "kona_player_info"},
                          {"x-fantasy-filter": json.dumps(filt)}, cookies=cookies, timeout=90)
