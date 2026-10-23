@@ -26,6 +26,7 @@ GAMELOG_VERSION = 2                    # 2: each game also keeps its shots (an o
 SHOTS = (FGA, FGM, TPA, TPM, FTA, FTM)  # the box score a logged game keeps after points and minutes
 OWN_MIN_MINUTES = 500                  # under this many minutes last season, ESPN's projection joins his record
 OWN_SHRINK = {"2": 150, "3": 200, "ft": 50}  # league-average attempts added before taking his own make rates
+DEPTH_MAX_AGE = 3 * 3600               # depth charts change slowly; refetch (30 requests) at most this often
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MY_TEAM_FALLBACK = 3
 
@@ -34,9 +35,14 @@ class Stale(Exception):
     """A source failed and there is no earlier copy to fall back on."""
 
 
-def cached(name, fetch, problems):
-    """Fetch a public source, keeping the last good copy in cache/ for when ESPN hiccups."""
+def cached(name, fetch, problems, max_age=None):
+    """Fetch a public source, keeping the last good copy in cache/ for when ESPN hiccups. With
+    max_age (seconds), a copy younger than that is used without fetching."""
     path = CACHE / ("%s.json" % name)
+    if max_age:
+        old = read_json(path)
+        if old and time.time() - old["at"] < max_age:
+            return old["data"]
     try:
         data = fetch()
         write_json(path, {"at": int(time.time()), "data": data})
@@ -182,6 +188,10 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         p = normalize_player(entry, league["starting"], ids)
         p["inj"] = injuries.get(p["id"])
         players[p["id"]] = p
+    try:
+        depth_roles(cached("depth", pull.depth_charts, problems, DEPTH_MAX_AGE), players)
+    except Stale as err:
+        problems.append("depth charts unavailable (%s)" % err)
     # rostered players beyond the pool limit (rare: someone holds a deep bench player)
     for t in league["teams"].values():
         for e in t["roster"]:
@@ -388,6 +398,23 @@ def own_rates(raw_pool, ids, scoring=DEFAULT_SCORING):
         out[pid] = {"p2": rate(g(FGM) - g(TPM), g(FGA) - g(TPA), "2"), "p3": rate(g(TPM), g(TPA), "3"),
                     "pft": rate(g(FTM), g(FTA), "ft"), "other_pm": other / g(MIN)}
     return out
+
+
+def depth_roles(charts, players):
+    """Each player's place on his team's depth chart, at the position where he is listed highest:
+    p["depth"] = {"pos", "rank": 1 for the first string, "now": rank with teammates who are Out
+    skipped, "out": names of the Out teammates listed ahead of him there}."""
+    for team, chart in charts.items():
+        for pos, ids in chart.items():
+            out = []
+            for rank, pid in enumerate(ids, 1):
+                p = players.get(pid)
+                if p is None:
+                    continue
+                if p["team"] == team and rank - len(out) < (p.get("depth") or {}).get("now", 99):
+                    p["depth"] = {"pos": pos, "rank": rank, "now": rank - len(out), "out": list(out)}
+                if p["status"] == "OUT":
+                    out.append(p["name"])
 
 
 def page_player(p, calendar):

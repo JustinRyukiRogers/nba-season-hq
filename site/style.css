@@ -273,3 +273,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .lock input[type=password] { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--raised); font-size: 16px; }
 .lock .error { color: var(--critical); }
 .empty { color: var(--muted); padding: 14px 12px; }
+
+.depth.d1 { color: var(--good-ink); font-weight: 600; }
+.depth.d2 { font-weight: 600; }

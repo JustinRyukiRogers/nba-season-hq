@@ -66,6 +66,17 @@ def transactions(cookies, periods):
     return sorted(seen.values(), key=lambda t: -(t.get("processDate") or t.get("proposedDate") or 0))
 
 
+def depth_charts():
+    """ESPN's depth chart for every team -> {team abbreviation: {position: [player ids, first string
+    first]}}. A player can be listed at several positions."""
+    def one(tid):
+        data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/teams/%d/depthcharts" % tid, timeout=30)
+        chart = (data.get("depthchart") or [{}])[0].get("positions") or {}
+        return TEAMS[tid], {pos.upper(): [int(a["id"]) for a in v.get("athletes") or []] for pos, v in chart.items()}
+    with ThreadPoolExecutor(8) as ex:
+        return dict(ex.map(one, TEAMS))
+
+
 def injuries():
     """ESPN's NBA injury report -> {player id: {...}}, joined on ESPN's player id."""
     data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/injuries", timeout=60)

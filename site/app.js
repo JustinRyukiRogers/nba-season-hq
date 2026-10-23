@@ -83,7 +83,16 @@ function faChip(p) {
   }
   return '';
 }
-function meta(p) { return esc(p.team) + ' · ' + esc(p.pos.join('/') || '–'); }
+function meta(p) { return esc(p.team) + ' · ' + esc(p.pos.join('/') || '–') + depthLabel(p); }
+// his place on ESPN's depth chart (p.depth), counting past teammates who are Out
+function depthLabel(p) {
+  const dp = p.depth;
+  if (!dp) return '';
+  const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  const what = dp.now === 1 ? 'starting ' + dp.pos : ord(dp.now) + ' string ' + dp.pos;
+  const why = dp.out.length ? ` (${dp.out.join(', ')} out)` : '';
+  return ` · <span class="depth d${Math.min(dp.now, 4)}" title="ESPN depth chart: listed ${ord(dp.rank)} at ${esc(dp.pos)}">${esc(what + why)}</span>`;
+}
 function nextGame(p) {
   const g = (p.next || [])[0];
   if (!g) return 'no games this week';

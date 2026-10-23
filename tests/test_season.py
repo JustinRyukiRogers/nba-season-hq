@@ -216,6 +216,17 @@ def test_shot_xfp():
     assert abs(row[5] - 6.0) < 0.05, "30 minutes at 0.2 other points a minute"
 
 
+def test_depth_roles():
+    from seasonkit import build
+    mk = lambda pid, team, status="ACTIVE": {"id": pid, "name": "P%d" % pid, "team": team, "status": status}
+    players = {1: mk(1, "ORL", "OUT"), 2: mk(2, "ORL"), 3: mk(3, "ORL"), 4: mk(4, "UTA")}
+    charts = {"ORL": {"PF": [3, 2], "C": [1, 2, 3, 4]}}
+    build.depth_roles(charts, players)
+    assert players[2]["depth"] == {"pos": "C", "rank": 2, "now": 1, "out": ["P1"]}, "starts at C while the starter is out"
+    assert players[3]["depth"]["pos"] == "PF" and players[3]["depth"]["now"] == 1, "his best listing wins"
+    assert "depth" not in players[4], "a stale listing on another team is ignored"
+
+
 def test_encryption_round_trip():
     node = shutil.which("node")
     if not node:
