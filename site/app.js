@@ -5,7 +5,7 @@
 const S = {
   data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
-  st: { range: 'week', who: 'mine', per: 'game', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
+  st: { range: 'week', who: 'mine', per: 'game', view: 'min', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
 };
 const TZ = 'America/New_York';
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
@@ -362,9 +362,12 @@ function viewTrades() {
 // Every finished game this season (d.gamelog: [days since opening night, fantasy points, minutes])
 // against the projection the dashboard started from: PROJ = projected points a game times games,
 // xMIN = projected minutes times games, xFP = minutes played times projected points a minute.
+// The shots view (games that also carry [shooting points, what the attempts were worth at his own make
+// rates, what the minutes were worth at his own rate for everything else, FGA, 3PA, FTA]) splits FP
+// against his own standards: sxFP = attempts at his rates + minutes at his other rate.
 function saveStats() {
-  const { range, who, per, onTeam, from, to } = S.st;
-  setItem('hq.stats', JSON.stringify({ range, who, per, onTeam, from, to }));
+  const { range, who, per, view, onTeam, from, to } = S.st;
+  setItem('hq.stats', JSON.stringify({ range, who, per, view, onTeam, from, to }));
 }
 function dayIndex(iso) { return Math.round((isoDate(iso) - isoDate(S.data.calendar.start)) / 86400000); }
 function dayIso(i) { return new Date(isoDate(S.data.calendar.start).getTime() + i * 86400000).toISOString().slice(0, 10); }
@@ -404,12 +407,16 @@ function statsRows() {
     if (entry && S.st.onTeam && entry.acquired !== 'DRAFT' && entry.since) first = Math.max(lo, dayIndex(etIso(entry.since)) + 1);
     const games = (log[String(id)] || []).filter(g => g[0] >= first && g[0] <= hi);
     const proj = p.ros.prior, pm = p.proj_mpg;
-    const r = { p, gp: games.length, min: 0, fp: 0, proj: proj * games.length, xmin: pm ? pm * games.length : null, xfp: pm ? 0 : null };
-    for (const [, fp, min] of games) {
+    const shots = games.every(g => g.length > 3);
+    const r = { p, gp: games.length, min: 0, fp: 0, proj: proj * games.length, xmin: pm ? pm * games.length : null, xfp: pm ? 0 : null,
+      fga: shots ? 0 : null, tpa: shots ? 0 : null, fta: shots ? 0 : null, sxfp: shots ? 0 : null, shoot: shots ? 0 : null, other: shots ? 0 : null };
+    for (const [, fp, min, sf, sx, ox, fga, tpa, fta] of games) {
       r.fp += fp; r.min += min;
       if (pm) r.xfp += min * proj / pm;
+      if (shots) { r.fga += fga; r.tpa += tpa; r.fta += fta; r.sxfp += sx + ox; r.shoot += sf - sx; r.other += fp - sf - ox; }
     }
     r.dfp = r.xfp == null ? null : r.fp - r.xfp;
+    r.dsfp = r.sxfp == null ? null : r.fp - r.sxfp;
     rows.push(r);
   }
   return rows;
@@ -422,6 +429,8 @@ function viewStats() {
     .map(([k, l]) => `<button data-srange="${k}" class="${S.st.range === k ? 'on' : ''}">${l}</button>`).join('');
   const per = [['game', 'Per game'], ['total', 'Totals']]
     .map(([k, l]) => `<button data-sper="${k}" class="${S.st.per === k ? 'on' : ''}">${l}</button>`).join('');
+  const views = [['min', 'Minutes'], ['shots', 'Shots']]
+    .map(([k, l]) => `<button data-sview="${k}" class="${S.st.view === k ? 'on' : ''}">${l}</button>`).join('');
   const opp = d.matchup ? team(d.matchup.opp) : null;
   const teams = Object.values(d.league.teams).filter(t => t.id !== me() && (!opp || t.id !== opp.id))
     .sort((a, b) => a.abbrev.localeCompare(b.abbrev));
@@ -433,14 +442,20 @@ function viewStats() {
   const [lo, hi] = statsRange();
   const isTeam = ['mine', 'opp'].includes(S.st.who) || S.st.who.startsWith('t');
   return `<div class="toolbar"><div class="seg">${ranges}</div></div>
-    <div class="toolbar">${whoSel}<div class="seg">${per}</div>
+    <div class="toolbar">${whoSel}<div class="seg">${views}</div><div class="seg">${per}</div>
       <label class="check small">From <input type="date" id="sfrom" value="${dayIso(Math.max(0, lo))}" min="${c.start}" max="${c.today}"></label>
       <label class="check small">to <input type="date" id="sto" value="${dayIso(Math.min(hi, dayIndex(c.today)))}" min="${c.start}" max="${c.today}"></label></div>
     <div class="toolbar"><div class="seg">${pos}</div>
       ${isTeam ? `<label class="check"><input type="checkbox" id="sonteam" ${S.st.onTeam ? 'checked' : ''}> Only games while on this team</label>` : ''}
       <input type="search" id="sq" placeholder="Search players or teams" value="${esc(S.q)}" autocomplete="off" spellcheck="false"></div>
     <div id="slist">${statsTable()}</div>
-    <p class="small muted"><b>PROJ</b>: his projected points a game (the preseason number the dashboard starts from) times games played.
+    <p class="small muted">${S.st.view === 'shots' ? `<b>xFP</b> here is his game at his own standards: the twos, threes and free throws he
+    took at his own make rates, plus his minutes at his own rate for rebounds, assists, steals, blocks and turnovers. His standards are
+    last season's totals (with ESPN's projection added for players with under 500 minutes last season), each make rate pulled toward the
+    league's as if he had taken another 150 twos, 200 threes and 50 free throws at the league average. <b>Shooting</b> = his shooting
+    points minus what those attempts were worth: making more or fewer than usual. <b>Other</b> = his other points minus what his minutes
+    were worth. <b>vs xFP</b> = Shooting + Other. Shot volume shows in FGA, 3PA and FTA; ESPN gives no shot locations, so a two is a two.
+    Shooting swings a lot from game to game; read it over weeks.</p><p class="small muted">` : ''}<b>PROJ</b>: his projected points a game (the preseason number the dashboard starts from) times games played.
     <b>xMIN</b>: projected minutes times games. <b>xFP</b>: the minutes he actually played times his projected points a minute, what the
     projection says those minutes were worth. So <b>xFP − PROJ</b> is the role (more or fewer minutes than expected) and <b>FP − xFP</b>
     (the <b>vs xFP</b> column) is what he did with the minutes. A game counts once it has finished (3½ hours after tip-off), and every game
@@ -460,15 +475,18 @@ function statsTable() {
     return (sort === 'name' ? x.localeCompare(y) : x - y) * dir || b.gp - a.gp;
   });
   const shown = rows.slice(0, 200);
-  const cols = [['gp', 'GP'], ['min', 'MIN'], ['xmin', 'xMIN'], ['fp', 'FP'], ['proj', 'PROJ'], ['xfp', 'xFP'], ['dfp', 'vs xFP']];
-  const fmt = (k, x) => x == null ? '–' : k === 'gp' ? x : k === 'dfp' ? `<span class="${x > 0.5 ? 'pos' : x < -0.5 ? 'neg' : ''}">${per ? signed1(x) : signed(x)}</span>` : per ? n1(x) : n0(x);
+  const cols = S.st.view === 'shots'
+    ? [['gp', 'GP'], ['min', 'MIN'], ['fga', 'FGA'], ['tpa', '3PA'], ['fta', 'FTA'], ['fp', 'FP'], ['sxfp', 'xFP'], ['shoot', 'Shooting'], ['other', 'Other'], ['dsfp', 'vs xFP']]
+    : [['gp', 'GP'], ['min', 'MIN'], ['xmin', 'xMIN'], ['fp', 'FP'], ['proj', 'PROJ'], ['xfp', 'xFP'], ['dfp', 'vs xFP']];
+  const fmt = (k, x) => x == null ? '–' : k === 'gp' ? x : ['dfp', 'dsfp', 'shoot', 'other'].includes(k) ? `<span class="${x > 0.5 ? 'pos' : x < -0.5 ? 'neg' : ''}">${per ? signed1(x) : signed(x)}</span>` : per ? n1(x) : n0(x);
   const head = `<tr><th data-ssort="name" class="sortable">Player${sort === 'name' ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>${cols.map(([k, l]) =>
     `<th class="r sortable" data-ssort="${k}">${l}${sort === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr>`;
   const body = shown.map(r => `<tr data-pid="${r.p.id}" class="${r.p.owner === me() ? 'mine' : ''}"><td><div class="nm">${esc(r.p.name)} ${statusChip(r.p)}</div>
     <div class="meta">${meta(r.p)} · ${esc(ownerLabel(r.p))}</div></td>${cols.map(([k]) => `<td class="r">${fmt(k, val(r, k))}</td>`).join('')}</tr>`).join('');
-  const t = { gp: 0, min: 0, fp: 0, proj: 0, xmin: 0, xfp: 0 };
+  const t = { gp: 0, min: 0, fp: 0, proj: 0, xmin: 0, xfp: 0, fga: 0, tpa: 0, fta: 0, sxfp: 0, shoot: 0, other: 0 };
   for (const r of rows) for (const k of Object.keys(t)) t[k] += r[k] || 0;
   t.dfp = t.fp - t.xfp;
+  t.dsfp = t.shoot + t.other;
   const tv = k => k === 'gp' ? t.gp : per ? (t.gp ? t[k] / t.gp : null) : t[k];
   const foot = rows.length > 1 && t.gp ? `<tr class="total"><td><b>All ${rows.length}</b>${per ? '<div class="meta">per game, across their games</div>' : ''}</td>${cols.map(([k]) => `<td class="r"><b>${fmt(k, tv(k))}</b></td>`).join('')}</tr>` : '';
   if (!rows.length) return '<div class="empty">No finished games in this range.</div>';
@@ -861,10 +879,11 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-srange],[data-sper],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
+    if (t.dataset.sview != null) { S.st.view = t.dataset.sview; saveStats(); render(); return; }
     if (t.dataset.ssort != null) {
       S.st.dir = S.st.sort === t.dataset.ssort ? -S.st.dir : (t.dataset.ssort === 'name' ? 1 : -1);
       S.st.sort = t.dataset.ssort; render(); return;

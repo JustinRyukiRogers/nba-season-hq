@@ -189,10 +189,31 @@ def test_gamelog():
     pool = [{"player": {"id": 9, "stats": [g(1, 30.0, 28), g(2, 4.0, 6), g(3, 0.0, 0), g(4, 50.0, 30, SEASON - 1)]}}]
     log = {"season": SEASON, "period": 0, "players": {"9": {"3": [12.0, 20.0]}}}
     build.update_gamelog(log, pool, games, now)
-    assert log["players"] == {"9": {"1": [30.0, 28]}}, \
+    assert log["players"] == {"9": {"1": [30.0, 28, 0, 0, 0, 0, 0, 0]}}, \
         "finished games only: not one still being played, one he sat out, or last season's: %s" % log
     cal = type("C", (), {"start": model.et_date(now - 2 * 86400)})()
     assert build.page_gamelog(log, {9: {}}, games, cal) == {"9": [[1, 30.0, 28]]}
+
+
+def test_shot_xfp():
+    from draftkit.config import FGA, FGM, FTA, FTM, MIN, REB, TPA, TPM
+    from seasonkit import build
+    # default scoring: a made two is +3, a made three +5, a made free throw +1, any miss -1
+    assert build.shooting_points(10, 5, 4, 2, 4, 3) == 2 * 5 + 2 + 3 + 2 * 5 - 10 + 2 + 3 - 4
+    assert abs(build.expected_shot(0.5, 2) - 1.0) < 1e-9 and abs(build.expected_shot(0.5, 3) - 2.0) < 1e-9
+    ids = {"last": "002026", "proj": "102027"}
+    vet = {MIN: 2000, FGA: 1000, FGM: 500, TPA: 400, TPM: 160, FTA: 200, FTM: 160, REB: 400}
+    rookie = {MIN: 100, FGA: 50, FGM: 20, TPA: 20, TPM: 6, FTA: 10, FTM: 7, REB: 30}
+    pool = [{"player": {"id": 1, "stats": [{"id": "002026", "stats": vet}, {"id": "102027", "stats": {MIN: 9999}}]}},
+            {"player": {"id": 2, "stats": [{"id": "002026", "stats": rookie}, {"id": "102027", "stats": rookie}]}}]
+    own = build.own_rates(pool, ids)
+    assert abs(own[1]["other_pm"] - 0.2) < 1e-9, "a veteran's own rate is last season's, not the projection"
+    assert own[1]["p3"] < 0.4 + 1e-9 and own[2]["p3"] > 0.3, "make rates are pulled toward the league's"
+    log = {"players": {"1": {"7": [40.0, 30, 10, 6, 4, 2, 2, 2]}}}
+    cal = type("C", (), {"start": model.et_date(1_800_000_000)})()
+    row = build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal, own)["1"][0]
+    assert row[:3] == [0, 40.0, 30] and row[3] == build.shooting_points(10, 6, 4, 2, 2, 2) and row[6:] == [10, 4, 2]
+    assert abs(row[5] - 6.0) < 0.05, "30 minutes at 0.2 other points a minute"
 
 
 def test_encryption_round_trip():
