@@ -66,6 +66,31 @@ def cached(name, fetch, problems, max_age=None):
 
 # ---------- normalizing ESPN's shapes ----------
 
+def roster_entries(t):
+    return [{"id": e["playerId"], "slot": SLOT_NAMES.get(e.get("lineupSlotId"), "BE"),
+             "acquired": e.get("acquisitionType"), "since": (e.get("acquisitionDate") or 0) // 1000}
+            for e in (t.get("roster") or {}).get("entries", [])]
+
+
+def roster_from_tomorrow(league, raw_next):
+    """Rosters as they will stand from the next scoring day. ESPN locks rosters at a day's first tip, so
+    an IR move, add or drop made after it counts from tomorrow and only shows in tomorrow's rosters.
+    Every move suggestion works from those (adds count from tomorrow too); today's lineup check keeps
+    today's. Each team's "roster" becomes tomorrow's, its entries carrying "today": the slot today
+    (None for a player not on it today), and "roster_today" keeps today's."""
+    nxt = {t["id"]: roster_entries(t) for t in raw_next or []}
+    for t in league["teams"].values():
+        today = t["roster"]
+        t["roster_today"] = today
+        if t["id"] not in nxt:
+            for e in today:
+                e["today"] = e["slot"]
+            continue
+        slot = {e["id"]: e["slot"] for e in today}
+        t["roster"] = [dict(e, today=slot.get(e["id"])) for e in nxt[t["id"]]]
+    return league
+
+
 def normalize_league(raw, swid=None):
     s = raw["settings"]
     counts = {SLOT_NAMES[int(k)]: n for k, n in s["rosterSettings"]["lineupSlotCounts"].items()
@@ -86,9 +111,7 @@ def normalize_league(raw, swid=None):
                        "pf": round(rec.get("pointsFor", 0.0), 1), "pa": round(rec.get("pointsAgainst", 0.0), 1)},
             "waiver_rank": t.get("waiverRank"), "seed": t.get("playoffSeed"),
             "adds": (t.get("transactionCounter") or {}).get("matchupAcquisitionTotals") or {},
-            "roster": [{"id": e["playerId"], "slot": SLOT_NAMES.get(e.get("lineupSlotId"), "BE"),
-                        "acquired": e.get("acquisitionType"), "since": (e.get("acquisitionDate") or 0) // 1000}
-                       for e in (t.get("roster") or {}).get("entries", [])],
+            "roster": roster_entries(t),
         }
     matchups = []
     for m in raw.get("schedule", []):
@@ -217,6 +240,14 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     problems = []
     raw_league = pull.league(cookies)
     league = normalize_league(raw_league, cookies.get("SWID"))
+    if raw_league.get("scoringPeriodId") and raw_league["scoringPeriodId"] < (league["final_period"] or 0):
+        try:
+            roster_from_tomorrow(league, pull.rosters(cookies, raw_league["scoringPeriodId"] + 1))
+        except Exception as err:
+            problems.append("tomorrow's rosters failed (%s); moves made after today's lock are not seen" % type(err).__name__)
+            roster_from_tomorrow(league, None)
+    else:
+        roster_from_tomorrow(league, None)
     me = league["me"]
     log = read_json(GAMELOG, {}) or {}
     if log.get("season") != SEASON or log.get("v") != GAMELOG_VERSION:

@@ -627,7 +627,7 @@ function viewValues() {
     const lu = p.lineup;
     return row(p, [['ROS', n1(p.ros.fppg)], ['wk starts', lu ? `${n1(lu.week_starts)}/${lu.week_games}` : '–', '', true],
       ['starts', lu ? n0(lu.starts) : '–', '', true], ['value', n0(p.ros.value)]],
-      { prefix: `<span class="chip slot${e.slot === 'IR' ? ' ir' : ''}">${esc(e.slot)}</span> `, meta: meta(p) + ' · ' + esc(nextGame(p)),
+      { prefix: `<span class="chip slot${e.slot === 'IR' ? ' ir' : ''}" ${e.today !== e.slot ? `title="${e.today ? esc(e.today) + ' today, ' : 'Joins '}${esc(e.slot)} from tomorrow (the move counts from the next day)"` : ''}>${e.today && e.today !== e.slot ? esc(e.today) + ' → ' : ''}${esc(e.slot)}</span> `, meta: meta(p) + ' · ' + esc(nextGame(p)),
         note: injuryNote(p), plain: true });
   }).join('');
   const drops = d.drop_order.slice(0, 4).map(id => esc(P(id).name)).join(', ');

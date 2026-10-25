@@ -36,6 +36,13 @@ def league(cookies):
     return espn.get_json(espn.league_url(), {"view": views}, cookies=cookies, timeout=60)
 
 
+def rosters(cookies, scoring_period):
+    """Every team's roster as ESPN has it for a scoring day (mRoster): moves made after a day's rosters
+    lock, IR moves and adds included, show here from the next day."""
+    return espn.get_json(espn.league_url(), {"view": "mRoster", "scoringPeriodId": scoring_period},
+                         cookies=cookies, timeout=30).get("teams") or []
+
+
 def pool(cookies, limit=POOL_LIMIT, games=2):
     """Rostered players and the best-owned free agents, as this league sees them, each with his
     `games` most recent games (last season's too, when this one has fewer; about 500 bytes each)."""

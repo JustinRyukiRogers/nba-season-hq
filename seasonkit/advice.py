@@ -61,8 +61,10 @@ HUNCH_NEWS_DAYS = 4       # an injury report updated this recently is news, not 
 HUNCH_ADDS = 1.0          # rise in % owned in a day across ESPN: others smell something
 
 
-def roster(league, team_id, include_ir=True):
-    return [e for e in league["teams"][str(team_id)]["roster"] if include_ir or e["slot"] != "IR"]
+def roster(league, team_id, include_ir=True, today=False):
+    """A team's roster from tomorrow (moves made after today's lock included), or as it is today."""
+    t = league["teams"][str(team_id)]
+    return [e for e in (t.get("roster_today", t["roster"]) if today else t["roster"]) if include_ir or e["slot"] != "IR"]
 
 
 def weakest(players, entries, exclude=()):
@@ -142,7 +144,7 @@ def lineup_check(league, players, me, calendar):
         return {"state": "over"}
     starting = league["starting"]
     rows, locked_slots, movable = [], [], []
-    for e in roster(league, me, include_ir=False):
+    for e in roster(league, me, include_ir=False, today=True):
         p = players.get(e["id"])
         if not p:
             continue
@@ -202,7 +204,9 @@ def upgrades(league, players, me, top=12):
     fas = sorted((p for p in free_agents(players) if not p["ros"]["out"]),   # Out players: see stash()
                  key=lambda p: -p["ros"]["value"])
     rows = [{"id": p["id"], "gain": round(p["ros"]["value"] - floor, 1)} for p in fas if p["ros"]["value"] > floor]
-    return {"drop": drop, "list": rows[:top]}
+    # with an open spot the add needs no drop: the open spot is the streaming spot until he takes it,
+    # and then `drop` holds it, so he is still measured against `drop`
+    return {"drop": drop, "open": open_room(league, ids), "list": rows[:top]}
 
 
 def stash(league, players, me, free_ir, top=12):
@@ -238,16 +242,26 @@ def week_days(calendar):
     return [d for d in calendar.days_left_in_week(week) if d >= calendar.start]
 
 
+def next_week_days(calendar):
+    """The next matchup week's days, or [] after the last one."""
+    week = calendar.current_week()
+    if week is None or week + 1 >= len(calendar.weeks):
+        return []
+    lo, hi = calendar.weeks[week + 1]
+    return [lo + timedelta(days=i) for i in range((hi - lo).days + 1)]
+
+
 def move_days(league, calendar, me, txs=()):
     """Days left this week on which an add still counts. An add counts from the next day whose
     first game has not tipped off (conservative: ESPN locks rosters at the day's first game), and
-    with one add a day, today is gone once you have used it."""
+    with one add a day, today is gone once you have used it. When none is left (the week's last day,
+    after the lock), the next week's days: an add made now counts from its first day."""
     days = week_days(calendar)
     if days and days[0] == calendar.today:
         first = calendar.first_tip(calendar.today)
         if (first and calendar.now >= first) or (league["acq"].get("per_day") and my_adds_today(txs, me, calendar)):
             days = days[1:]
-    return days
+    return days or next_week_days(calendar)
 
 
 def open_room(league, ids):
@@ -381,6 +395,9 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
         return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
     starting = league["starting"]
     can_move = set(move_days(league, calendar, me, txs))
+    next_week = bool(can_move) and min(can_move) > days[-1]
+    if next_week:                 # this week is done for moves: plan the next one
+        days = sorted(can_move)
     acq = league["acq"]
     cap = len(days) if acq.get("per_day") or not acq.get("limit") else max(
         0, int(acq["limit"]) - int((league["teams"][str(me)]["adds"] or {}).get(str(calendar.current_week() + 1), 0)))
@@ -417,17 +434,19 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
             spot = (spot - {m["drop"]}) | {m["id"]}
 
     lineups, total, rosters = [], 0.0, list(ids)
-    locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False)}
+    locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False, today=True)}
     for d in days:
         for m in moves:
             if m["day"] == str(d):   # a stash goes to IR, out of the lineup
                 rosters = [pid for pid in rosters if pid != m["drop"]] + ([m["id"]] if m["kind"] == "add" else [])
-        day = day_lineup(rosters, d, players, starting, calendar, locked if d == calendar.today else {})
+        today_ids = [pid for pid in locked if pid in players]
+        day = day_lineup(today_ids if d == calendar.today else rosters, d, players, starting, calendar,
+                         locked if d == calendar.today else {})
         day["moves"] = [m for m in moves if m["day"] == str(d)]
         total += day["points"]
         lineups.append(day)
     now_pts, _, _ = project_days(ids, days, players, starting, calendar)
-    return {"days": [str(d) for d in days], "moves": moves, "lineups": lineups, "points": round(total, 1),
+    return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "lineups": lineups, "points": round(total, 1),
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
             "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
             "spot": sorted(stream_spots(players, ids, open_room(league, ids))), "open": open_room(league, ids)}
@@ -778,7 +797,7 @@ def plan_action(league, players, plan, calendar):
     detail = "%s for that day's lineup%s." % ("%+.0f points" % m["gain"],
         " (%s expected to start)" % n1(m["starts"]) if m["games"] else "")
     if m["drop"] is None:
-        detail += " It fills the spot opened by the IR stash, so nothing is dropped."
+        detail += " It fills an open roster spot, so nothing is dropped."
     elif m["spot"]:
         detail += " %s holds your streaming spot." % name(players, m["drop"])
     if m["ros_cost"] >= 1:
@@ -825,6 +844,11 @@ def upgrade_action(players, ups, waivers):
         why.append("Claims process %s; %s claim before you." % (clock(claim), plural(_ahead(waivers), "team")))
     elif not hot:
         why.append("First come, first served, but no rush elsewhere (%+.1f%% owned today)." % p["own_chg"])
+    if ups.get("open"):
+        return {"kind": "upgrade", "urgency": "now" if hot else "soon", "by": claim, "player": u["id"], "drop": None,
+                "title": "Upgrade: add %s into your open spot (+%.0f value)" % (p["name"], u["gain"]),
+                "detail": "No drop needed. %s then becomes your streaming spot, so the gain is counted over him." % name(players, ups["drop"]),
+                "why": " ".join(why)}
     return {"kind": "upgrade", "urgency": "now" if hot else "soon", "by": claim, "player": u["id"], "drop": ups["drop"],
             "title": "Upgrade: %s over %s (+%.0f value)" % (p["name"], name(players, ups["drop"]), u["gain"]),
             "why": " ".join(why)}

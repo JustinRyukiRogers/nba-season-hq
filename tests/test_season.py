@@ -376,6 +376,28 @@ def test_week_plan_and_move_days():
     assert advice.move_days(lg, cal, 3, txs)[0] == start + timedelta(days=1), "today's one add is used up"
 
 
+def test_tomorrows_rosters():
+    from seasonkit import build
+    lg = {"teams": {"3": {"id": 3, "roster": [{"id": 1, "slot": "UT"}, {"id": 2, "slot": "BE"}]}}}
+    nxt = [{"id": 3, "roster": {"entries": [{"playerId": 1, "lineupSlotId": 13}, {"playerId": 2, "lineupSlotId": 12},
+                                            {"playerId": 5, "lineupSlotId": 12}]}}]
+    build.roster_from_tomorrow(lg, nxt)
+    t = lg["teams"]["3"]
+    assert [(e["id"], e["slot"], e["today"]) for e in t["roster"]] == [(1, "IR", "UT"), (2, "BE", "BE"), (5, "BE", None)], \
+        "an IR move or add made after today's lock counts from tomorrow: %s" % t["roster"]
+    assert [e["slot"] for e in advice.roster(lg, 3, today=True)] == ["UT", "BE"], "today's lineup check keeps today's"
+    assert [e["id"] for e in advice.roster(lg, 3, include_ir=False)] == [2, 5]
+
+
+def test_moves_roll_into_next_week():
+    start = date(2026, 11, 2)
+    cal = FakeCal(start, 1, {"BOS": [0]}, now=10_000 + 60)        # the week's last day, after its first tip
+    cal.weeks = [(start, start), (start + timedelta(days=1), start + timedelta(days=7))]
+    lg = league_with([])
+    lg["acq"] = {"per_day": True}
+    assert advice.move_days(lg, cal, 3, []) == [start + timedelta(days=i) for i in range(1, 8)], \
+        "after the last day's lock, an add counts from next week's first day"
+
 def test_trade_helpers():
     players = {i: player(i, value=v) for i, v in ((1, 10.0), (2, 50.0), (3, 80.0), (8, 5.0))}
     val = lambda pid: players[pid]["ros"]["value"]
