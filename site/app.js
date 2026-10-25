@@ -3,7 +3,7 @@
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
-  data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', ttab: 'ideas', mkind: 'all', pos: '', instant: false, q: '', who: 'all',
+  data: null, key: null, tab: 'home', wtab: 'adds', rtab: 'values', ttab: 'ideas', ptab: 'adds', ltab: 'standings', mkind: 'all', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
   st: { range: 'week', who: 'mine', per: 'game', view: 'min', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
 };
@@ -141,13 +141,14 @@ function render() {
   $('#title').textContent = d.league.name + ' · ' + abbr(me());
   freshness();
   const urgent = visibleActs().some(a => urgencyOf(a) === 'now');
+  if (!PAGES[S.tab]) S.tab = 'home';
   for (const b of document.querySelectorAll('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === S.tab);
     b.setAttribute('aria-selected', b.dataset.tab === S.tab);
-    if (b.dataset.tab === 'today') b.innerHTML = 'Today' + (urgent ? '<span class="dot" title="Something needs doing"></span>' : '');
+    if (b.dataset.tab === 'home') b.innerHTML = 'Dashboard' + (urgent ? '<span class="dot" title="Something needs doing"></span>' : '');
   }
-  const views = { today: viewToday, week: viewWeek, roster: viewRoster, waivers: viewWaivers, trades: viewTrades, stats: viewStats, injuries: viewInjuries, league: viewLeague };
-  $('#view').innerHTML = views[S.tab]();
+  $('#view').classList.toggle('wide', S.tab === 'home' || (S.tab === 'players' && S.ptab === 'stats'));
+  $('#view').innerHTML = PAGES[S.tab]();
 }
 
 function freshness() {
@@ -159,7 +160,173 @@ function freshness() {
   el.title = mins > STALE_MIN ? 'Over ' + STALE_MIN + ' minutes since the last refresh. GitHub may be skipping scheduled runs, or ESPN failed (see the Actions tab of the repo).' : '';
 }
 
-// ----- Today -----
+// ----- pages: a dashboard, then a detail page per area with its own sub-views -----
+const PAGES = {
+  home: () => viewDashboard(),
+  team: () => subnav('rtab', [['values', 'Values'], ['vs', 'Actual vs projected'], ['inj', 'Injuries'], ['news', 'News']])
+    + ({ values: viewValues, vs: viewVsProjection, inj: viewMyInjuries, news: viewTeamNews }[S.rtab] || viewValues)(),
+  week: () => viewWeekPage(),
+  players: () => subnav('ptab', [['adds', 'Waivers'], ['stats', 'Stats']]) + (S.ptab === 'stats' ? viewStats() : viewWaivers()),
+  trades: () => viewTrades(),
+  league: () => subnav('ltab', [['standings', 'Standings and moves'], ['injuries', 'Injuries']]) + (S.ltab === 'injuries' ? viewInjuries() : viewLeague()),
+};
+const OLD_TABS = { today: 'home', roster: 'team', injuries: 'league', waivers: 'players', stats: 'players' };
+function subnav(key, items) {
+  if (!items.some(([k]) => k === S[key])) S[key] = items[0][0];
+  return `<div class="toolbar subnav"><div class="seg">${items.map(([k, l]) =>
+    `<button data-sub="${key}:${k}" class="${S[key] === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+}
+function go(target) {          // "page" or "page:sub-view"
+  const [page, sub] = target.split(':');
+  S.tab = page;
+  const key = { team: 'rtab', players: 'ptab', league: 'ltab', trades: 'ttab' }[page];
+  if (key && sub) S[key] = sub;
+  setItem('hq.tab', S.tab);
+  render();
+  window.scrollTo(0, 0);
+}
+
+// ----- Dashboard -----
+function viewDashboard() {
+  const d = S.data, cal = d.calendar, left = [], right = [];
+  const top = [];
+  if (d.problems && d.problems.length) top.push(`<div class="banner warn small">${d.problems.map(esc).join('<br>')}</div>`);
+  if (cal.today < cal.start) top.push(`<div class="banner">The season starts <b>${dayLabel(cal.start)}</b>. Lineup checks begin that day.</div>`);
+  top.push(statRow());
+  if (S.changes.length) {
+    left.push(`<div class="panel"><h3>Since you last looked <span class="sub">${S.prev ? 'data from ' + esc(whenLabel(S.prev.at)) : ''}</span></h3>`
+      + S.changes.map(c => `<div class="small">${c}</div>`).join('') + '</div>');
+  }
+  left.push('<h2 style="margin-top:0">To do</h2>');
+  const acts = visibleActs(), hidden = d.actions.length - acts.length;
+  if (!acts.length) left.push(`<div class="card muted">${hidden ? 'Nothing else needs doing today.' : 'Nothing needs doing right now.'}</div>`);
+  for (const a of acts) left.push(actionCard(a));
+  if (hidden) left.push(`<p class="small muted">${plural(hidden, 'to-do')} hidden until tomorrow. <a href="#" data-unhide="1">Show</a></p>`);
+  if (acts.length) left.push(`<p class="small muted">${URGENCY.now}: it costs points or blocks you today. ${URGENCY.soon}: it has a deadline, or someone may get there first.
+    ${URGENCY.optional}: a small gain, or no one is racing you.</p>`);
+  const takes = d.takes || [];
+  if (takes.length) {
+    left.push(`<h2>Analyst takes <span class="sub">judgment calls the numbers can't see; they never change the numbers</span></h2>`);
+    for (const t of takes) left.push(`<details class="card take-sum"><summary><span class="tk ${t.stance}">${STANCE[t.stance]}</span> <b>${esc(t.on || P(t.pids[0]).name)}</b>
+      <span class="muted small">until ${esc(dayShort(t.until))}</span></summary><div class="who" style="margin-top:8px">${t.pids.map(id => pill(id)).join(' ')}</div>${takeBlock(t)}</details>`);
+  }
+  right.push(matchupPanel(), weekPanel(), vsPanel(), standingsPanel(), movesPanel());
+  return top.join('') + `<div class="dash"><div>${left.join('')}</div><div>${right.join('')}</div></div>`;
+}
+
+function stat(goto, k, v, s, cls = '') {
+  return `<button class="stat" data-goto="${goto}"><div class="k">${k}</div><div class="v ${cls}">${v}</div><div class="s">${s}</div></button>`;
+}
+function statRow() {
+  const d = S.data, m = d.matchup, L = d.lineup, W = d.plan, U = d.upgrades, M = d.league_moves;
+  const tiles = [];
+  if (m && m.me && m.them) {
+    const ahead = m.me.projected - m.them.projected;
+    tiles.push(stat('week', `Week ${m.period} vs ${esc(abbr(m.opp))}`, `${n0(m.me.score)}–${n0(m.them.score)}`,
+      `projected ${n0(m.me.projected)}–${n0(m.them.projected)} (${signed(ahead)})`, ahead >= 0 ? 'pos' : 'neg'));
+  }
+  if (L && L.state === 'season') {
+    tiles.push(stat('week', "Today's lineup", L.gain >= 0.5 ? `${signed1(L.gain)} to gain` : 'Set', `${plural(L.with_games, 'player')} with a game`, L.gain >= 0.5 ? 'neg' : ''));
+  }
+  const mv = W && W.moves && W.moves[0];
+  tiles.push(stat('week', W && W.next_week ? 'Next move (next week)' : 'Next move',
+    mv ? `Add ${esc(P(mv.id).name.split(' ').slice(-1)[0])}` : 'None',
+    mv ? `${esc(dayShort(mv.day))}, ${mv.drop ? 'drop ' + esc(P(mv.drop).name) : 'into the open spot'}` : 'no add worth making'));
+  const up = U && U.list[0];
+  tiles.push(stat('players:adds', 'Best season-long add', up ? signed(up.gain) : '–', up ? esc(P(up.id).name) + (U.open ? ', no drop' : ' over ' + esc(P(U.drop).name)) : 'none beats your roster'));
+  const mine = myRoster().map(e => P(e.id)).filter(Boolean);
+  const out = mine.filter(p => p.status === 'OUT'), dtd = mine.filter(p => p.status === 'DAY_TO_DAY');
+  tiles.push(stat('team:inj', 'Your injuries', `${out.length} out · ${dtd.length} DTD`, [...out, ...dtd].map(p => esc(p.name.split(' ').slice(-1)[0])).join(', ') || 'everyone healthy'));
+  if (M) {
+    const recent = M.list.filter(t => t.at >= Date.now() / 1000 - 3 * 86400);
+    const trades = M.list.filter(t => t.kind === 'trade').length;
+    const last = M.list[0], ls = last && last.sides[0];
+    tiles.push(stat('trades:league', 'League moves, 3 days', `${recent.length}${trades ? ` · ${trades} trade${trades > 1 ? 's' : ''}` : ''}`,
+      ls ? `${esc(abbr(ls.team))} ${ls.got.length ? 'added ' + esc(P(ls.got[0]).name) : 'dropped ' + esc(P(ls.gave[0]).name)}` : 'none yet'));
+  }
+  return `<div class="stat-row">${tiles.join('')}</div>`;
+}
+
+function matchupPanel() {
+  const m = S.data.matchup;
+  if (!m || !m.me || !m.them) return '';
+  const opp = team(m.opp);
+  return `<div class="panel"><h3>Week ${m.period} vs ${esc(opp.abbrev)} <a href="#" data-goto="week">This week →</a></h3>
+    <p class="cap">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}. ${esc(opp.name)}. Expected starts left: ${n0(m.me.starts)} for you, ${n0(m.them.starts)} for them.</p>
+    ${Charts.race([{ label: abbr(me()) + ' (you)', done: m.me.score, rest: m.me.remaining, cls: 'mine' }, { label: opp.abbrev, done: m.them.score, rest: m.them.remaining }])}</div>`;
+}
+function dayCols(W) {
+  return Charts.columns(W.lineups.map(x => ({
+    label: isoDate(x.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), sub: plural(x.games, 'game'), value: x.points,
+    tip: `${dayLabel(x.date)}: ${n0(x.points)} expected points, ${n1(x.starts)} expected starts of ${x.games} games${x.moves.length ? ' · add ' + x.moves.map(m => P(m.id).name).join(', ') : ''}`,
+  })));
+}
+function weekPanel() {
+  const W = S.data.plan;
+  if (!W || !W.lineups || !W.lineups.length) return '';
+  return `<div class="panel"><h3>${W.next_week ? 'Next week, day by day' : 'Rest of the week, day by day'} <a href="#" data-goto="week">Plan →</a></h3>
+    <p class="cap">Expected points from your best daily lineups${W.moves.length ? ', with the planned adds' : ''}: ${n0(W.points)} in all.</p>${dayCols(W)}</div>`;
+}
+function vsRows(limit) {
+  const R = S.data.team_report;
+  if (!R) return [];
+  return R.rows.filter(r => r.gp && P(r.id)).map(r => ({
+    label: P(r.id).name, value: r.fppg - r.proj, text: signed1(r.fppg - r.proj), pid: r.id,
+    tip: `${P(r.id).name}: ${n1(r.fppg)} a game over ${plural(r.gp, 'game')} against ${n1(r.proj)} projected (${signed1(r.fppg - r.proj)}); ${n1(r.mpg)} min against ${n1(r.proj_mpg)}`,
+  })).sort((a, b) => b.value - a.value).slice(0, limit);
+}
+function vsPanel() {
+  const rows = vsRows(14);
+  if (!rows.length) return '';
+  return `<div class="panel"><h3>Your players against projection <a href="#" data-goto="team:vs">Details →</a></h3>
+    <p class="cap">Fantasy points a game so far, minus the preseason projection. Small samples swing a lot.</p>${Charts.hbars(rows, { diverging: true, labelWidth: 140 })}</div>`;
+}
+function standingsRows() {
+  return Object.values(S.data.league.teams).filter(t => t.outlook).sort((a, b) => b.outlook.per_week - a.outlook.per_week).map(t => ({
+    label: `${t.abbrev} · ${t.record.w}-${t.record.l}`, value: t.outlook.per_week, text: n0(t.outlook.per_week), cls: t.id === me() ? 'mine' : 'dim',
+    tip: `${t.abbrev} ${t.name}: ${n0(t.outlook.per_week)} points a week projected from here; ${t.record.w}-${t.record.l}, ${n0(t.record.pf)} points for`,
+  }));
+}
+function standingsPanel() {
+  const rows = standingsRows();
+  if (!rows.length) return '';
+  const rank = rows.findIndex(r => r.cls === 'mine') + 1;
+  return `<div class="panel"><h3>Roster strength <a href="#" data-goto="league">League →</a></h3>
+    <p class="cap">Points a week each roster's best daily lineups should score from here, held as is. You rank ${rank} of ${rows.length}.</p>
+    ${Charts.hbars(rows, { labelWidth: 110, max: Math.max(...rows.map(r => r.value)) })}</div>`;
+}
+function movesPanel() {
+  const M = S.data.league_moves;
+  if (!M || !M.list.length) return '';
+  const lines = M.list.slice(0, 6).flatMap(t => t.sides.map(sd => `<div class="small" style="margin:3px 0"><span class="muted">${esc(whenLabel(t.at))}</span>
+    <b>${esc(abbr(sd.team))}</b> ${t.kind === 'trade' ? 'traded for' : sd.got.length ? 'added' : 'dropped'} ${(sd.got.length ? sd.got : sd.gave).map(id => esc(P(id).name)).join(', ')}${sd.got.length && sd.gave.length && t.kind !== 'trade' ? ', dropped ' + sd.gave.map(id => esc(P(id).name)).join(', ') : ''}
+    ${sd.gain != null ? `<span class="muted">· lineup ${signed(sd.gain)}</span>` : ''}</div>`)).join('');
+  return `<div class="panel"><h3>League moves <a href="#" data-goto="trades:league">All moves →</a></h3>${lines}</div>`;
+}
+
+// ----- This week -----
+function viewWeekPage() {
+  const W = S.data.plan, out = [];
+  if (W && W.next_week) out.push(`<div class="banner small">This matchup week is done for adds (rosters lock at the day's first tip), so this plans <b>next week</b>.
+    Today's lineup is below; anything you add now counts from ${esc(dayLabel(W.days[0]))}.</div>`);
+  if (W && W.lineups && W.lineups.length) out.push(`<div class="panel"><h3>${W.next_week ? 'Next week' : 'Rest of the week'}: expected points a day</h3>
+    <p class="cap">Your best daily lineups with the planned adds. Each day's lineup is listed below.</p>${dayCols(W)}</div>`);
+  out.push(matchupPanel(), lineupCard(), viewWeek());
+  return out.join('');
+}
+function viewMyInjuries() {
+  const rows = S.data.injuries.filter(r => r.who === 'mine').map(r => {
+    const p = P(r.id);
+    const ben = (r.beneficiaries || []).map(id => esc(P(id).name)).join(', ');
+    const note = [injuryNote(p), ben ? `<span class="muted">On waivers at his positions:</span> ${ben}` : ''].filter(Boolean).join('<br>');
+    return row(p, [['back', p.ros.out ? (p.ros.season_over ? 'season' : p.ros.back ? dayShort(p.ros.back) : '?') : '–'], ['value', n0(p.ros.value)]],
+      { meta: meta(p) + ' · ' + esc(ownerLabel(p)), note });
+  }).join('');
+  return `<p class="lead small">Your players on ESPN's injury report. The whole league's is under League.</p>
+    <div class="rows">${rows || '<div class="empty">No one on your roster is hurt.</div>'}</div>`;
+}
+
+// ----- Today (the old first tab; its pieces now live on the dashboard and This week) -----
 function viewToday() {
   const d = S.data, cal = d.calendar, out = [];
   if (d.problems && d.problems.length) out.push(`<div class="banner warn small">${d.problems.map(esc).join('<br>')}</div>`);
@@ -390,7 +557,16 @@ function viewLeagueMoves() {
   const kinds = [['all', 'All'], ['trade', 'Trades'], ['pickup', 'Claims and pickups']]
     .map(([k, l]) => `<button data-mkind="${k}" class="${S.mkind === k ? 'on' : ''}">${l}</button>`).join('');
   const shown = L.list.filter(t => S.mkind === 'all' || (S.mkind === 'trade' ? t.kind === 'trade' : t.kind !== 'trade'));
-  const out = [factoredBanner(L), `<div class="toolbar"><div class="seg">${kinds}</div></div>`];
+  const out = [factoredBanner(L)];
+  const net = {};
+  for (const t of L.list) for (const sd of t.sides) net[sd.team] = (net[sd.team] || 0) + sd.value;
+  const netRows = Object.entries(net).map(([tid, v]) => ({ label: abbr(Number(tid)), value: v, text: signed(v), cls: Number(tid) === me() ? 'mine' : '',
+    tip: `${abbr(Number(tid))}: ${signed(v)} rest-of-season value from its ${L.list.filter(t => t.sides.some(sd => sd.team === Number(tid))).length} moves listed here` }))
+    .sort((a, b) => b.value - a.value);
+  if (netRows.length) out.push(`<div class="panel"><h3>Value added through moves, by team</h3><p class="cap">Rest-of-season value of players got minus players given up,
+    summed over the moves below, on today's numbers (value is floored at a waiver pickup, so swapping fringe players shows as about zero).</p>
+    ${Charts.hbars(netRows, { diverging: true, labelWidth: 80 })}</div>`);
+  out.push(`<div class="toolbar"><div class="seg">${kinds}</div></div>`);
   const trades = shown.filter(t => t.kind === 'trade'), others = shown.filter(t => t.kind !== 'trade');
   if (!shown.length) out.push(`<div class="card muted">${S.mkind === 'trade' ? 'No trades in the league yet this season.' : 'No moves yet.'}</div>`);
   for (const t of trades) out.push(tradeCard(t));
@@ -660,7 +836,12 @@ function viewValues() {
         note: injuryNote(p), plain: true });
   }).join('');
   const drops = d.drop_order.slice(0, 4).map(id => esc(P(id).name)).join(', ');
-  return `<h2>Your roster <span class="sub">${entries.length} players · IR ${ir}/${d.league.ir_slots}</span></h2>
+  const vals = entries.map(e => P(e.id)).sort((a, b) => b.ros.value - a.ros.value).map(p => ({
+    label: p.name, value: Math.max(0, p.ros.value), text: n0(p.ros.value), pid: p.id,
+    tip: `${p.name}: value ${n0(p.ros.value)} (points above a waiver pickup, rest of season), ${n1(p.ros.fppg)} a game, ${n1(p.ros.games)} games left` }));
+  return `<div class="panel"><h3>Rest-of-season value</h3><p class="cap">Points above a waiver pickup over the rest of the season, playoff weeks 1.5×. The list below has the same numbers.</p>
+    ${Charts.hbars(vals, { labelWidth: 170 })}</div>
+    <h2>Your roster <span class="sub">${entries.length} players · IR ${ir}/${d.league.ir_slots}</span></h2>
     <div class="rows">${rows}</div>
     ${lineupTotals(entries)}
     <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk starts</b>: expected starts in your lineup over
@@ -708,6 +889,9 @@ function viewVsProjection() {
       <div class="tile"><b>${t.games} of ${t.team_games}</b><span>team games played</span></div>
     </div>`);
   }
+  const chart = vsRows(40);
+  if (chart.length) out.push(`<div class="panel"><h3>Points a game against projection</h3><p class="cap">So far this season, minus the preseason projection. The table below has the same numbers.</p>
+    ${Charts.hbars(chart, { diverging: true, labelWidth: 170 })}</div>`);
   const rows = R.rows.map(r => {
     const p = P(r.id);
     if (!p) return '';
@@ -866,7 +1050,10 @@ function viewLeague() {
     if (t.trade.length) what.push('trade: ' + t.trade.map(([id, f, to]) => esc((P(id) || { name: '#' + id }).name) + ' to ' + esc(abbr(to))).join(', '));
     return `<tr class="${t.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(t.team))}</b> ${what.join('; ')}</td></tr>`;
   }).join('');
-  return `<h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r">PF</th><th class="r">PA</th><th class="r" title="Points a week from each roster's best daily lineups over the rest of the season, as it stands">Proj/wk</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
+  const strength = standingsRows();
+  return `${strength.length ? `<div class="panel"><h3>Roster strength from here</h3><p class="cap">Points a week each roster's best daily lineups should score over the rest of the season, held as is (the Proj/wk column).</p>
+    ${Charts.hbars(strength, { labelWidth: 130 })}</div>` : ''}
+    <h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r">PF</th><th class="r">PA</th><th class="r" title="Points a week from each roster's best daily lineups over the rest of the season, as it stands">Proj/wk</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
     <p class="small muted"><b>Proj/wk</b>: points a week each roster's starters should score over the rest of the season if it is held as is (players in IR left out).</p>
     ${games ? `<h2>This week</h2><div class="card scroll-x"><table class="tbl"><tbody>${games}</tbody></table></div>` : ''}
     <h2>Recent moves <span class="sub">last four days</span></h2><div class="card scroll-x">${tx ? `<table class="tbl"><tbody>${tx}</tbody></table>` : '<div class="muted">No adds, drops or trades yet.</div>'}</div>
@@ -1013,8 +1200,12 @@ function boot() {
   } else {
     S.key = getItem('hq.key');
   }
-  S.tab = getItem('hq.tab') || 'today';
+  S.tab = getItem('hq.tab') || 'home';
+  S.tab = OLD_TABS[S.tab] || S.tab;
   S.rtab = getItem('hq.rtab') || 'values';
+  S.ptab = getItem('hq.ptab') || 'adds';
+  S.ltab = getItem('hq.ltab') || 'standings';
+  Charts.install();
   S.ttab = getItem('hq.ttab') || 'ideas';
   Object.assign(S.st, getJSON('hq.stats') || {});
 
@@ -1028,7 +1219,7 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-sub],[data-wtab],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
@@ -1039,10 +1230,11 @@ function boot() {
     }
     if (t.dataset.dismiss != null) { setHidden(t.dataset.dismiss, true); render(); return; }
     if (t.dataset.unhide) { e.preventDefault(); setHidden(null, false); render(); return; }
-    if (t.dataset.goto) { e.preventDefault(); S.tab = t.dataset.goto; setItem('hq.tab', S.tab); render(); window.scrollTo(0, 0); return; }
+    if (t.dataset.goto) { e.preventDefault(); go(t.dataset.goto); return; }
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
     if (t.dataset.rtab != null) { S.rtab = t.dataset.rtab; setItem('hq.rtab', S.rtab); render(); return; }
+    if (t.dataset.sub) { const [k, v] = t.dataset.sub.split(':'); S[k] = v; setItem('hq.' + k, v); render(); return; }
     if (t.dataset.mkind != null) { S.mkind = t.dataset.mkind; render(); return; }
     if (t.dataset.ttab != null) { S.ttab = t.dataset.ttab; setItem('hq.ttab', S.ttab); render(); return; }
     if (t.dataset.pos != null) { S.pos = t.dataset.pos; render(); return; }
