@@ -753,7 +753,9 @@ function openPlayer(id) {
   const sched = (p.next || []).map(([d, opp, home, tip]) => `<tr><td>${dayShort(d)}</td><td>${home ? 'vs' : '@'} ${esc(opp)}</td><td>${timeLabel(tip)}</td><td class="r">${p.odds && p.odds[d] != null ? Math.round(100 * p.odds[d]) + '%' : ''}</td></tr>`).join('');
   const news = (p.news || []).map(n => `<div class="news"><div class="when">${esc(n.at ? whenLabel(Date.parse(n.at) / 1000) + ' · ' + ago(Date.parse(n.at) / 1000) : '')}${n.kind === 'article' ? ' · ESPN article' : ''}</div>
     <div class="hl">${esc(n.headline)}</div>${n.story ? `<div class="st">${esc(n.story)}</div>` : ''}</div>`).join('');
-  const prior = r.prior_weight < 1
+  const prior = r.mpg != null
+    ? `${n1(r.mpg)} min × ${r.rate.toFixed(2)} a minute · ${p.stats.season ? `his ${n1(p.stats.season[1])} min over ${plural(p.stats.season[0], 'game')} (recent ones first) blended with the ${esc(r.prior_from)}'s ${n1(p.proj_mpg)} (${Math.round(100 * (1 - r.prior_weight))}% weight on this season); preseason ${n1(r.prior)} a game` : `the ${esc(r.prior_from)}'s preseason minutes and rate (no games yet this season)`}`
+    : r.prior_weight < 1
     ? `${n1(r.prior)} from the ${esc(r.prior_from)}, blended with ${p.stats.season ? n1(p.stats.season[2]) + ' over ' + plural(p.stats.season[0], 'game') : 'this season'} (${Math.round(100 * (1 - r.prior_weight))}% weight on this season)`
     : `${n1(r.prior)} from the ${esc(r.prior_from)} (no games yet this season)`;
   $('#drawer').innerHTML = `<button class="close" id="drawer-close" aria-label="Close">×</button>

@@ -201,8 +201,11 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     priors = read_json(DATA / "priors.json", {"players": {}})
     cal_fit = priors.get("calibration") or calibrate.load()
     notes = load_notes(players)
+    tip = {g["id"]: g["tip"] for g in games}
     for p in players.values():
-        model.value_player(p, priors, injuries, notes, calendar, cal_fit)
+        mine = (log["players"].get(str(p["id"])) or {})
+        played = [(g[0], g[1]) for gid, g in sorted(mine.items(), key=lambda kv: tip.get(int(kv[0]), 0))]
+        model.value_player(p, priors, injuries, notes, calendar, cal_fit, played)
         p["proj_mpg"] = ((priors["players"].get(str(p["id"])) or {}).get("mpg")
                          or ((p["stats"].get("proj") or [None, None])[1]))
         if p["id"] in notes and notes[p["id"]].get("note"):

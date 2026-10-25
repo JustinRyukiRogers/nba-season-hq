@@ -49,6 +49,17 @@ def test_comeback_and_blend():
     assert abs(fppg - 35.0) < 1e-9 and sd < 5.0, "after PRIOR_GAMES games the two count equally"
 
 
+def test_minutes_rate():
+    assert model.minutes_rate(25.0, 1.0, [], None) == (25.0, 1.0, 0.0), "no games: the preseason guess"
+    games = [(15.0, 30.0)] * 4
+    mins, rate, w = model.minutes_rate(20.0, 1.0, games, [4, 30.0, 15.0])
+    assert abs(mins - 25.0) < 1e-9 and w == 0.5, "after MINUTES_PRIOR_GAMES games the two count equally"
+    assert abs(rate - (400 + 60) / (400 + 120)) < 1e-9, "points a minute weigh 120 of his minutes against 400"
+    mins_new, _, _ = model.minutes_rate(20.0, 1.0, [(0, 10.0)] * 3 + [(0, 30.0)], [4, 15.0, 0.0])
+    mins_old, _, _ = model.minutes_rate(20.0, 1.0, [(0, 30.0)] + [(0, 10.0)] * 3, [4, 15.0, 0.0])
+    assert mins_new > mins_old, "recent games count more"
+
+
 def test_absence():
     today, end = date(2026, 11, 1), date(2027, 3, 28)
     out, back, over = model.absence({"status": "OUT"}, None, {}, today, end)
