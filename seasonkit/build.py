@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timedelta
 
 from draftkit import calibrate, espn
-from draftkit.config import (DATA, DEFAULT_SCORING, FGA, FGM, FTA, FTM, MIN, PTS, ROOT, SEASON, SLOT_NAMES, TEAMS,
+from draftkit.config import (DATA, DEFAULT_SCORING, FGA, FGM, FTA, FTM, MIN, PTS, ROOT, SEASON, SLOT_NAMES, TEAMS, TO,
                              TPA, TPM, load_env, read_json, write_json)
 from draftkit.sources import norm_name
 
@@ -25,9 +25,14 @@ GAMELOG = CACHE / "gamelog.json"      # every pool player's finished games this 
 GAMELOG_SETTLE = 3.5 * 3600            # seconds after tip-off before a game counts as finished
 GAMELOG_OVERLAP = 3                    # scoring days re-read each refresh, for stat corrections
 GAMELOG_MAX = 200                      # most games asked for at once (a lost cache refills the season)
-GAMELOG_VERSION = 2                    # 2: each game also keeps its shots (an older log is refilled)
-SHOTS = (FGA, FGM, TPA, TPM, FTA, FTM)  # the box score a logged game keeps after points and minutes
+GAMELOG_VERSION = 3                    # 2: each game keeps its shots; 3: and turnovers (an older log is refilled)
+SHOTS = (FGA, FGM, TPA, TPM, FTA, FTM)  # the box score a logged game keeps after points and minutes, then TO
+BOXES = CACHE / "boxes.json"           # each finished game's team totals, for usage rates
+BOXES_MAX_NEW = 150                    # games' team boxes fetched in one refresh (a lost cache refills over a few)
+FT_PLAY = 0.44                         # free throw attempts that end a play (the usual usage-rate weight)
+LEAGUE_MIN_PER_PLAY = 2.15             # team minutes per team play (FGA + 0.44 FTA + TO), until this season has boxes
 OWN_MIN_MINUTES = 500                  # under this many minutes last season, ESPN's projection joins his record
+OWN_TS_SHOTS = 100                     # shots (FGA + FTA) before his own true shooting is shown
 OWN_SHRINK = {"2": 150, "3": 200, "ft": 50}  # league-average attempts added before taking his own make rates
 DEPTH_MAX_AGE = 3 * 3600               # depth charts change slowly; refetch (30 requests) at most this often
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
@@ -224,6 +229,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     update_gamelog(log, raw_pool, games, now)
     log["period"] = sp_now
     write_json(GAMELOG, log)
+    boxes = update_boxes(games, now, problems)
 
     ids = pull.stat_ids()
     players = {}
@@ -327,6 +333,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         if items:
             players[pid]["news"] = items[:6]
 
+    own = own_rates(raw_pool, pull.stat_ids())
     data = {
         "generated": now, "generated_label": datetime.fromtimestamp(now, model.ET).strftime("%a %b %-d, %-I:%M %p ET"),
         "problems": problems,
@@ -345,7 +352,8 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
-        "gamelog": page_gamelog(log, players, games, calendar, own_rates(raw_pool, pull.stat_ids())),
+        "gamelog": page_gamelog(log, players, games, calendar, own, boxes),
+        "usage": page_usage(own, boxes, players),
     }
     SITE.mkdir(exist_ok=True)
     write_json(SITE / "data.json", data)
@@ -356,7 +364,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
 
 def update_gamelog(log, raw_pool, games, now):
     """Add each pool player's finished games this season to the log: {player id: {game id: [fantasy
-    points, minutes, FGA, FGM, 3PA, 3PM, FTA, FTM]}}. A game counts once GAMELOG_SETTLE has passed since tip-off, so a game still
+    points, minutes, FGA, FGM, 3PA, 3PM, FTA, FTM, TO]}}. A game counts once GAMELOG_SETTLE has passed since tip-off, so a game still
     being played never shows as a short one; one he sat out (no minutes) is removed."""
     tips = {g["id"]: g["tip"] for g in games}
     for entry in raw_pool:
@@ -371,7 +379,7 @@ def update_gamelog(log, raw_pool, games, now):
             box = x.get("stats") or {}
             mins = box.get(MIN) or 0
             if mins > 0:
-                mine[str(gid)] = [round(x.get("appliedTotal") or 0, 1), round(mins, 1)] + [box.get(k) or 0 for k in SHOTS]
+                mine[str(gid)] = [round(x.get("appliedTotal") or 0, 1), round(mins, 1)] + [box.get(k) or 0 for k in SHOTS + (TO,)]
             else:
                 mine.pop(str(gid), None)
         if not mine:
@@ -379,27 +387,75 @@ def update_gamelog(log, raw_pool, games, now):
     return log
 
 
-def page_gamelog(log, players, games, calendar, own=None):
-    """The log for the page: {player id: [[days since opening night, fantasy points, minutes], ...]},
-    for players in the pool. With his own rates (own_rates) a game also carries [shooting points,
-    shooting points his attempts were worth at his make rates, other points his minutes were worth
-    at his rate, FGA, 3PA, FTA]."""
-    own = own or {}
+def update_boxes(games, now, problems):
+    """Team totals for every finished game this season (pull.team_boxes), kept in cache/boxes.json; a
+    finished game's box does not change, so each is fetched once, at most BOXES_MAX_NEW a refresh."""
+    have = read_json(BOXES, {}) or {}
+    if have.get("season") != SEASON:
+        have = {"season": SEASON, "games": {}}
+    want = [g["id"] for g in games if now - g["tip"] >= GAMELOG_SETTLE and str(g["id"]) not in have["games"]]
+    if want:
+        got = pull.team_boxes(want[-BOXES_MAX_NEW:])
+        have["games"].update({str(k): v for k, v in got.items()})
+        if len(got) < len(want):
+            problems.append("team boxes: %d finished games still to fetch (usage rates leave them out)" % (len(want) - len(got)))
+        write_json(BOXES, have)
+    return have["games"]
+
+
+def plays(fga, fta, to):
+    """The plays a player (or team) used: shots, free-throw trips and turnovers."""
+    return fga + FT_PLAY * fta + to
+
+
+def min_per_play(boxes):
+    """The league's team minutes per team play this season (LEAGUE_MIN_PER_PLAY until there are games):
+    turns plays a minute into a usage rate, plays / minutes x this / 5."""
+    m = sum(t[0] for b in boxes.values() for t in b)
+    n = sum(plays(t[1], t[2], t[3]) for b in boxes.values() for t in b)
+    return m / n if n > 1000 else LEAGUE_MIN_PER_PLAY
+
+
+def page_gamelog(log, players, games, calendar, own=None, boxes=None):
+    """The log for the page: {player id: [[days since opening night, fantasy points, minutes, shooting
+    points, shooting points his attempts were worth at his make rates, other points his minutes were
+    worth at his rate, FGA, 3PA, FTA, points, plays he used, plays his team used while he was on the
+    floor], ...]} for players in the pool. The three "worth" columns need his own rates (own_rates) and
+    are None without them; the team's plays need the game's team box (update_boxes) and are None
+    without it. Usage rate = plays he used / plays his team used while he was on (his minutes x the
+    team's plays a fifth of the team's minutes)."""
+    own, boxes = own or {}, boxes or {}
     day = {g["id"]: (model.et_date(g["tip"]) - calendar.start).days for g in games}
 
     def row(pid, gid, g):
         out = [day[int(gid)], g[0], g[1]]
+        if len(g) < 2 + len(SHOTS) + 1:
+            return out
+        fga, fgm, tpa, tpm, fta, ftm, to = g[2:9]
         rates = own.get(int(pid))
-        if rates and len(g) == 2 + len(SHOTS):
-            fga, fgm, tpa, tpm, fta, ftm = g[2:]
+        sf = shooting_points(fga, fgm, tpa, tpm, fta, ftm)
+        if rates:
             two = fga - tpa
-            out += [round(shooting_points(fga, fgm, tpa, tpm, fta, ftm), 1),
-                    round(two * expected_shot(rates["p2"], 2) + tpa * expected_shot(rates["p3"], 3)
-                          + fta * expected_shot(rates["pft"], 1), 1),
-                    round(g[1] * rates["other_pm"], 1), fga, tpa, fta]
-        return out
+            sx = two * expected_shot(rates["p2"], 2) + tpa * expected_shot(rates["p3"], 3) + fta * expected_shot(rates["pft"], 1)
+            out += [round(sf, 1), round(sx, 1), round(g[1] * rates["other_pm"], 1)]
+        else:
+            out += [round(sf, 1), None, None]
+        team = next((t for t in boxes.get(str(gid)) or [] if int(pid) in t[4]), None)
+        on = round(g[1] * plays(*team[1:4]) / (team[0] / 5), 1) if team else None
+        return out + [fga, tpa, fta, 2 * fgm + tpm + ftm, round(plays(fga, fta, to), 1), on]
     return {pid: sorted(row(pid, gid, g) for gid, g in gs.items() if int(gid) in day)
             for pid, gs in log["players"].items() if int(pid) in players}
+
+
+def page_usage(own, boxes, players):
+    """Each player's standards for the Stats tab's usage view: {"players": {player id: [usage rate, true
+    shooting]}}, in percent, from the same record as his make
+    rates (own_rates). Last season's usage is his plays a minute against the league's team pace this
+    season (min_per_play), since his team's plays that season are not on hand: within a couple of points
+    of the usual team-based number."""
+    mpp = min_per_play(boxes)
+    return {"players": {str(pid): [round(100 * r["plays_pm"] * mpp / 5, 1), round(100 * r["ts"], 1)]
+                        for pid, r in own.items() if pid in players and r.get("ts") is not None}}
 
 
 def shooting_points(fga, fgm, tpa, tpm, fta, ftm, scoring=DEFAULT_SCORING):
@@ -419,7 +475,8 @@ def expected_shot(rate, value):
 
 def own_rates(raw_pool, ids, scoring=DEFAULT_SCORING):
     """Each player's own standards, for the Stats tab's shots view: {player id: {"p2", "p3", "pft": make
-    rates, "other_pm": fantasy points a minute from everything but shooting}}. They come from last
+    rates, "other_pm": fantasy points a minute from everything but shooting, "plays_pm": plays used a
+    minute, "ts": true shooting, None under OWN_TS_SHOTS shots}}. They come from last
     season's totals, with ESPN's projection for this one added when he played under OWN_MIN_MINUTES,
     and each make rate is pulled toward the league's by OWN_SHRINK attempts. The league scores like
     ESPN's default (DEFAULT_SCORING)."""
@@ -430,7 +487,7 @@ def own_rates(raw_pool, ids, scoring=DEFAULT_SCORING):
         split = {x.get("id"): x.get("stats") or {} for x in pl.get("stats") or []}
         last, proj = split.get(ids["last"]) or {}, split.get(ids["proj"]) or {}
         both = (last.get(MIN) or 0) < OWN_MIN_MINUTES
-        box = {k: (last.get(k) or 0) + ((proj.get(k) or 0) if both else 0) for k in {MIN, *SHOTS, *scoring}}
+        box = {k: (last.get(k) or 0) + ((proj.get(k) or 0) if both else 0) for k in {MIN, TO, *SHOTS, *scoring}}
         if (box.get(MIN) or 0) > 0:
             totals[pl["id"]] = box
     lg = {k: sum(b.get(k, 0) for b in totals.values()) for k in SHOTS}
@@ -442,7 +499,9 @@ def own_rates(raw_pool, ids, scoring=DEFAULT_SCORING):
         g = lambda k: b.get(k) or 0
         other = sum(w * g(k) for k, w in scoring.items() if k not in shooting)
         out[pid] = {"p2": rate(g(FGM) - g(TPM), g(FGA) - g(TPA), "2"), "p3": rate(g(TPM), g(TPA), "3"),
-                    "pft": rate(g(FTM), g(FTA), "ft"), "other_pm": other / g(MIN)}
+                    "pft": rate(g(FTM), g(FTA), "ft"), "other_pm": other / g(MIN),
+                    "plays_pm": plays(g(FGA), g(FTA), g(TO)) / g(MIN),
+                    "ts": g(PTS) / (2 * plays(g(FGA), g(FTA), 0)) if g(FGA) + g(FTA) >= OWN_TS_SHOTS else None}
     return out
 
 

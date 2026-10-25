@@ -77,6 +77,38 @@ def depth_charts():
         return dict(ex.map(one, TEAMS))
 
 
+def team_boxes(game_ids):
+    """Each finished game's team totals, for usage rates -> {game id: [[minutes, FGA, FTA, turnovers,
+    [player ids]], ...] one per team}. Minutes are the players' summed (240 plus 25 a period of overtime);
+    turnovers are the players' (not team turnovers), as usage counts them. A game that fails is left out."""
+    def one(gid):
+        try:
+            data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/summary", {"event": gid}, timeout=30)
+        except Exception:
+            return gid, None
+        out = []
+        for team in (data.get("boxscore") or {}).get("players") or []:
+            block = (team.get("statistics") or [{}])[0]
+            col = {k: i for i, k in enumerate(block.get("labels") or [])}
+            if not {"MIN", "FG", "FT", "TO"} <= col.keys():
+                return gid, None
+            t, ids = [0.0, 0.0, 0.0, 0.0], []
+            for a in block.get("athletes") or []:
+                row = a.get("stats") or []
+                try:
+                    mins = float(row[col["MIN"]])
+                    fga, fta = float(row[col["FG"]].split("-")[1]), float(row[col["FT"]].split("-")[1])
+                    to = float(row[col["TO"]])
+                except (ValueError, IndexError):
+                    continue
+                t = [t[0] + mins, t[1] + fga, t[2] + fta, t[3] + to]
+                ids.append(int(a["athlete"]["id"]))
+            out.append(t + [ids])
+        return gid, out if len(out) == 2 and all(x[0] > 0 for x in out) else None
+    with ThreadPoolExecutor(8) as ex:
+        return {gid: box for gid, box in ex.map(one, game_ids) if box}
+
+
 def injuries():
     """ESPN's NBA injury report -> {player id: {...}}, joined on ESPN's player id."""
     data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/injuries", timeout=60)

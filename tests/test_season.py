@@ -200,10 +200,10 @@ def test_gamelog():
     pool = [{"player": {"id": 9, "stats": [g(1, 30.0, 28), g(2, 4.0, 6), g(3, 0.0, 0), g(4, 50.0, 30, SEASON - 1)]}}]
     log = {"season": SEASON, "period": 0, "players": {"9": {"3": [12.0, 20.0]}}}
     build.update_gamelog(log, pool, games, now)
-    assert log["players"] == {"9": {"1": [30.0, 28, 0, 0, 0, 0, 0, 0]}}, \
+    assert log["players"] == {"9": {"1": [30.0, 28, 0, 0, 0, 0, 0, 0, 0]}}, \
         "finished games only: not one still being played, one he sat out, or last season's: %s" % log
     cal = type("C", (), {"start": model.et_date(now - 2 * 86400)})()
-    assert build.page_gamelog(log, {9: {}}, games, cal) == {"9": [[1, 30.0, 28]]}
+    assert build.page_gamelog(log, {9: {}}, games, cal)["9"][0][:3] == [1, 30.0, 28]
 
 
 def test_shot_xfp():
@@ -220,11 +220,18 @@ def test_shot_xfp():
     own = build.own_rates(pool, ids)
     assert abs(own[1]["other_pm"] - 0.2) < 1e-9, "a veteran's own rate is last season's, not the projection"
     assert own[1]["p3"] < 0.4 + 1e-9 and own[2]["p3"] > 0.3, "make rates are pulled toward the league's"
-    log = {"players": {"1": {"7": [40.0, 30, 10, 6, 4, 2, 2, 2]}}}
+    log = {"players": {"1": {"7": [40.0, 30, 10, 6, 4, 2, 2, 2, 3]}}}
     cal = type("C", (), {"start": model.et_date(1_800_000_000)})()
-    row = build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal, own)["1"][0]
-    assert row[:3] == [0, 40.0, 30] and row[3] == build.shooting_points(10, 6, 4, 2, 2, 2) and row[6:] == [10, 4, 2]
+    # his team: 240 minutes, 90 FGA, 25 FTA, 14 turnovers = 115 plays, 23 a fifth of its minutes
+    boxes = {"7": [[240.0, 90.0, 25.0, 14.0, [1, 5]], [240.0, 80.0, 20.0, 10.0, [6]]]}
+    row = build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal, own, boxes)["1"][0]
+    assert row[:3] == [0, 40.0, 30] and row[3] == build.shooting_points(10, 6, 4, 2, 2, 2) and row[6:9] == [10, 4, 2]
     assert abs(row[5] - 6.0) < 0.05, "30 minutes at 0.2 other points a minute"
+    assert row[9] == 2 * 6 + 2 + 2 and row[10] == round(10 + 0.44 * 2 + 3, 1)
+    assert abs(row[11] - 30 * 115 / 48) < 0.05, "his team's plays while he was on: 30 of its 48 minutes a fifth"
+    bare = build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal)["1"][0]
+    assert bare[4] is None and bare[11] is None, "no own rates or team box: those columns are empty, not left out"
+    assert abs(own[1]["plays_pm"] - (1000 + 0.44 * 200) / 2000) < 1e-9, "plays a minute: shots, free-throw trips, turnovers"
 
 
 def test_takes():

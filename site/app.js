@@ -394,6 +394,15 @@ function viewTrades() {
 // The shots view (games that also carry [shooting points, what the attempts were worth at his own make
 // rates, what the minutes were worth at his own rate for everything else, FGA, 3PA, FTA]) splits FP
 // against his own standards: sxFP = attempts at his rates + minutes at his other rate.
+// The usage view reads the rest of a game [points, plays he used, plays his team used while he was on]:
+// USG% = plays he used / his team's while he was on, TS% = points / (2 x (FGA + 0.44 FTA)), against
+// last season's (d.usage.players: [USG%, TS%]).
+const USAGE_RATES = ['usg', 'usg0', 'dusg', 'ts', 'ts0', 'dts', 'fpm', 'xfpm'];
+const usageRates = (r, plays, on, pts, shots) => {
+  r.usg = on ? 100 * plays / on : null;
+  r.ts = shots ? 100 * pts / (2 * shots) : null;
+  r.fpm = r.min ? r.fp / r.min : null;
+};
 function saveStats() {
   const { range, who, per, view, onTeam, from, to } = S.st;
   setItem('hq.stats', JSON.stringify({ range, who, per, view, onTeam, from, to }));
@@ -436,16 +445,26 @@ function statsRows() {
     if (entry && S.st.onTeam && entry.acquired !== 'DRAFT' && entry.since) first = Math.max(lo, dayIndex(etIso(entry.since)) + 1);
     const games = (log[String(id)] || []).filter(g => g[0] >= first && g[0] <= hi);
     const proj = p.ros.prior, pm = p.proj_mpg;
-    const shots = games.every(g => g.length > 3);
+    const shots = games.every(g => g[4] != null);
     const r = { p, gp: games.length, min: 0, fp: 0, proj: proj * games.length, xmin: pm ? pm * games.length : null, xfp: pm ? 0 : null,
       fga: shots ? 0 : null, tpa: shots ? 0 : null, fta: shots ? 0 : null, sxfp: shots ? 0 : null, shoot: shots ? 0 : null, other: shots ? 0 : null };
-    for (const [, fp, min, sf, sx, ox, fga, tpa, fta] of games) {
+    let plays = 0, on = 0, pts = 0, sh = 0;
+    for (const [, fp, min, sf, sx, ox, fga, tpa, fta, pt, pl, tpl] of games) {
       r.fp += fp; r.min += min;
+      if (tpl) { plays += pl; on += tpl; }
+      if (pt != null) { pts += pt; sh += fga + 0.44 * fta; }
       if (pm) r.xfp += min * proj / pm;
       if (shots) { r.fga += fga; r.tpa += tpa; r.fta += fta; r.sxfp += sx + ox; r.shoot += sf - sx; r.other += fp - sf - ox; }
     }
     r.dfp = r.xfp == null ? null : r.fp - r.xfp;
     r.dsfp = r.sxfp == null ? null : r.fp - r.sxfp;
+    Object.assign(r, { plays, on, pts, sh });
+    usageRates(r, plays, on, pts, sh);
+    const base = ((d.usage || {}).players || {})[String(id)];
+    r.usg0 = base ? base[0] : null; r.ts0 = base ? base[1] : null;
+    r.dusg = r.usg != null && r.usg0 != null ? r.usg - r.usg0 : null;
+    r.dts = r.ts != null && r.ts0 != null && sh >= 5 ? r.ts - r.ts0 : null;
+    r.xfpm = pm ? proj / pm : null;
     rows.push(r);
   }
   return rows;
@@ -458,7 +477,7 @@ function viewStats() {
     .map(([k, l]) => `<button data-srange="${k}" class="${S.st.range === k ? 'on' : ''}">${l}</button>`).join('');
   const per = [['game', 'Per game'], ['total', 'Totals']]
     .map(([k, l]) => `<button data-sper="${k}" class="${S.st.per === k ? 'on' : ''}">${l}</button>`).join('');
-  const views = [['min', 'Minutes'], ['shots', 'Shots']]
+  const views = [['min', 'Minutes'], ['shots', 'Shots'], ['usage', 'Usage']]
     .map(([k, l]) => `<button data-sview="${k}" class="${S.st.view === k ? 'on' : ''}">${l}</button>`).join('');
   const opp = d.matchup ? team(d.matchup.opp) : null;
   const teams = Object.values(d.league.teams).filter(t => t.id !== me() && (!opp || t.id !== opp.id))
@@ -478,7 +497,13 @@ function viewStats() {
       ${isTeam ? `<label class="check"><input type="checkbox" id="sonteam" ${S.st.onTeam ? 'checked' : ''}> Only games while on this team</label>` : ''}
       <input type="search" id="sq" placeholder="Search players or teams" value="${esc(S.q)}" autocomplete="off" spellcheck="false"></div>
     <div id="slist">${statsTable()}</div>
-    <p class="small muted">${S.st.view === 'shots' ? `<b>xFP</b> here is his game at his own standards: the twos, threes and free throws he
+    <p class="small muted">${S.st.view === 'usage' ? `<b>USG%</b> (usage rate): the share of his team's plays he used while
+    he was on the floor, a play being a shot, a trip to the line (0.44 of a free throw attempt) or a turnover. 20% is an even share of five;
+    stars run 28–35%. <b>TS%</b> (true shooting): points per shot, counting threes and free throws, as a percentage (points ÷ 2 × (FGA + 0.44 FTA));
+    the league runs about 58%. <b>last</b> is last season's (with ESPN's projection added for players with under 500 minutes; TS% needs 100 shots).
+    Last season's usage is his plays a minute against this season's league pace, so it can be a point or two off the usual figure.
+    <b>FP/MIN</b>: fantasy points a minute; <b>proj/MIN</b> the preseason projection's. Usage settles within a few games; shooting takes
+    weeks, so a TS% swing over a week or two is mostly luck.</p><p class="small muted">` : S.st.view === 'shots' ? `<b>xFP</b> here is his game at his own standards: the twos, threes and free throws he
     took at his own make rates, plus his minutes at his own rate for rebounds, assists, steals, blocks and turnovers. His standards are
     last season's totals (with ESPN's projection added for players with under 500 minutes last season), each make rate pulled toward the
     league's as if he had taken another 150 twos, 200 threes and 50 free throws at the league average. <b>Shooting</b> = his shooting
@@ -496,7 +521,7 @@ function statsTable() {
   const per = S.st.per === 'game';
   const rows = statsRows().filter(r => passes(r.p) && (r.gp || ['mine', 'opp'].includes(S.st.who) || S.st.who.startsWith('t')));
   const val = (r, k) => k === 'name' ? r.p.name : k === 'gp' ? r.gp
-    : r[k] == null ? null : per && k !== 'gp' ? (r.gp ? r[k] / r.gp : null) : r[k];
+    : r[k] == null ? null : USAGE_RATES.includes(k) ? r[k] : per && k !== 'gp' ? (r.gp ? r[k] / r.gp : null) : r[k];
   const { sort, dir } = S.st;
   rows.sort((a, b) => {
     const x = val(a, sort), y = val(b, sort);
@@ -504,19 +529,24 @@ function statsTable() {
     return (sort === 'name' ? x.localeCompare(y) : x - y) * dir || b.gp - a.gp;
   });
   const shown = rows.slice(0, 200);
-  const cols = S.st.view === 'shots'
+  const cols = S.st.view === 'usage'
+    ? [['gp', 'GP'], ['min', 'MIN'], ['usg', 'USG%'], ['usg0', 'last'], ['dusg', '±'], ['ts', 'TS%'], ['ts0', 'last'], ['dts', '±'], ['fpm', 'FP/MIN'], ['xfpm', 'proj/MIN']]
+    : S.st.view === 'shots'
     ? [['gp', 'GP'], ['min', 'MIN'], ['fga', 'FGA'], ['tpa', '3PA'], ['fta', 'FTA'], ['fp', 'FP'], ['sxfp', 'xFP'], ['shoot', 'Shooting'], ['other', 'Other'], ['dsfp', 'vs xFP']]
     : [['gp', 'GP'], ['min', 'MIN'], ['xmin', 'xMIN'], ['fp', 'FP'], ['proj', 'PROJ'], ['xfp', 'xFP'], ['dfp', 'vs xFP']];
-  const fmt = (k, x) => x == null ? '–' : k === 'gp' ? x : ['dfp', 'dsfp', 'shoot', 'other'].includes(k) ? `<span class="${x > 0.5 ? 'pos' : x < -0.5 ? 'neg' : ''}">${per ? signed1(x) : signed(x)}</span>` : per ? n1(x) : n0(x);
+  const fmt = (k, x) => x == null ? '–' : k === 'gp' ? x : ['fpm', 'xfpm'].includes(k) ? x.toFixed(2)
+    : ['dusg', 'dts'].includes(k) ? `<span class="${x > 1 ? 'pos' : x < -1 ? 'neg' : ''}">${signed1(x)}</span>`
+    : ['usg', 'usg0', 'ts', 'ts0'].includes(k) ? n1(x) : ['dfp', 'dsfp', 'shoot', 'other'].includes(k) ? `<span class="${x > 0.5 ? 'pos' : x < -0.5 ? 'neg' : ''}">${per ? signed1(x) : signed(x)}</span>` : per ? n1(x) : n0(x);
   const head = `<tr><th data-ssort="name" class="sortable">Player${sort === 'name' ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>${cols.map(([k, l]) =>
     `<th class="r sortable" data-ssort="${k}">${l}${sort === k ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr>`;
   const body = shown.map(r => `<tr data-pid="${r.p.id}" class="${r.p.owner === me() ? 'mine' : ''}"><td><div class="nm">${esc(r.p.name)} ${statusChip(r.p)}</div>
     <div class="meta">${meta(r.p)} · ${esc(ownerLabel(r.p))}</div></td>${cols.map(([k]) => `<td class="r">${fmt(k, val(r, k))}</td>`).join('')}</tr>`).join('');
-  const t = { gp: 0, min: 0, fp: 0, proj: 0, xmin: 0, xfp: 0, fga: 0, tpa: 0, fta: 0, sxfp: 0, shoot: 0, other: 0 };
+  const t = { gp: 0, min: 0, fp: 0, proj: 0, xmin: 0, xfp: 0, fga: 0, tpa: 0, fta: 0, sxfp: 0, shoot: 0, other: 0, plays: 0, on: 0, pts: 0, sh: 0 };
   for (const r of rows) for (const k of Object.keys(t)) t[k] += r[k] || 0;
+  usageRates(t, t.plays, t.on, t.pts, t.sh);
   t.dfp = t.fp - t.xfp;
   t.dsfp = t.shoot + t.other;
-  const tv = k => k === 'gp' ? t.gp : per ? (t.gp ? t[k] / t.gp : null) : t[k];
+  const tv = k => k === 'gp' ? t.gp : USAGE_RATES.includes(k) ? t[k] ?? null : per ? (t.gp ? t[k] / t.gp : null) : t[k];
   const foot = rows.length > 1 && t.gp ? `<tr class="total"><td><b>All ${rows.length}</b>${per ? '<div class="meta">per game, across their games</div>' : ''}</td>${cols.map(([k]) => `<td class="r"><b>${fmt(k, tv(k))}</b></td>`).join('')}</tr>` : '';
   if (!rows.length) return '<div class="empty">No finished games in this range.</div>';
   return `<div class="card scroll-x"><table class="tbl stats"><thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>
