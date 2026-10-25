@@ -128,6 +128,22 @@ for t in d["trades"]["list"][:2]:
     for pid in t["give"] + t["get"]:
         context(pid, "give" if pid in t["give"] else "get")
 
+section("LEAGUE TRADES (judged on today's numbers; rosters already reflect them)")
+L = d.get("league_trades") or {"list": [], "unmatched": []}
+if L["unmatched"]:
+    print("  NOT YET ON NEW ROSTERS: " + ", ".join(map(name, L["unmatched"])))
+for t in L["list"][:5]:
+    print("\n  " + " <-> ".join(d["league"]["teams"][str(sd["team"])]["abbrev"] for sd in t["sides"]))
+    for sd in t["sides"]:
+        print("    %s got %s, gave %s: %+d season lineup points, value %+d, ESPN %+d%s" % (
+            d["league"]["teams"][str(sd["team"])]["abbrev"], " + ".join(map(name, sd["got"])) or "-",
+            " + ".join(map(name, sd["gave"])) or "-", sd["gain"], sd["value"], sd["espn"],
+            ", plays you week %d" % sd["meets_me"] if sd.get("meets_me") else ""))
+    for m in t["moves"]:
+        context(m["id"], "moved")
+if not L["list"]:
+    print("  none this season")
+
 section("EXISTING TAKES")
 for t in takes:
     until = t.get("until") or "(written + 7 days)"

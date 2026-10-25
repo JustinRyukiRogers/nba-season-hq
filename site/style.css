@@ -289,3 +289,4 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .depth.d1 { color: var(--good-ink); font-weight: 600; }
 .depth.d2 { font-weight: 600; }
+.card.mine { background: var(--mine); }

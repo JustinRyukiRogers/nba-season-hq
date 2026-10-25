@@ -300,6 +300,14 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     reserve = {"id": pending["player"], "drop": pending["drop"]} if pending and pending["urgency"] in ("now", "soon") else None
     plan = advice.week_plan(league, players, me, calendar, txs, reserve)
     trades = advice.trade_ideas(league, players, me, calendar)
+    try:
+        league_trades = advice.league_trades(league, players, me, calendar, pull.league_trades(cookies))
+    except Exception as err:
+        problems.append("league trades failed (%s)" % type(err).__name__)
+        league_trades = None
+    if league_trades and league_trades["unmatched"]:
+        problems.append("traded players not yet on their new rosters: %s" % ", ".join(
+            players[x]["name"] for x in league_trades["unmatched"]))
 
     # starts, not games: what each roster's best daily lineups get out of it, if it is held
     for tid, t in league["teams"].items():
@@ -348,7 +356,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
-        "plan": plan, "trades": trades,
+        "plan": plan, "trades": trades, "league_trades": league_trades,
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,

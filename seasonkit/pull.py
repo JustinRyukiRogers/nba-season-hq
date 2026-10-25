@@ -14,6 +14,7 @@ from draftkit import espn
 from draftkit.config import SEASON, TEAMS
 
 POOL_LIMIT = 550        # every rostered player (156) plus the free agents anyone would add
+TRADED = 244            # activity-feed message type for a player moved in a trade
 
 
 def _clean(text):
@@ -64,6 +65,25 @@ def transactions(cookies, periods):
             if tx.get("status") == "EXECUTED" and tx.get("type") in ("FREEAGENT", "WAIVER", "TRADE_ACCEPT"):
                 seen[tx["id"]] = tx
     return sorted(seen.values(), key=lambda t: -(t.get("processDate") or t.get("proposedDate") or 0))
+
+
+def league_trades(cookies, limit=200):
+    """Every trade this season, from the league's activity feed (one request; the transactions view
+    only covers a scoring period at a time) -> [{at, moves: [[player id, from team, to team], ...]}],
+    newest first. Each traded player is one message (type TRADED) in the trade's topic."""
+    filt = {"topics": {"filterType": {"value": ["ACTIVITY_TRANSACTIONS"]}, "limit": limit, "offset": 0,
+                       "limitPerMessageSet": {"value": 25},
+                       "sortMessageDate": {"sortPriority": 1, "sortAsc": False},
+                       "filterIncludeMessageTypeIds": {"value": [TRADED]}}}
+    data = espn.get_json(espn.league_url() + "/communication/", {"view": "kona_league_communication"},
+                         headers={"x-fantasy-filter": json.dumps(filt)}, cookies=cookies, timeout=30)
+    out = []
+    for topic in data.get("topics") or []:
+        moves = [[m["targetId"], m.get("from"), m.get("to")] for m in topic.get("messages") or []
+                 if m.get("messageTypeId") == TRADED and m.get("targetId")]
+        if moves:
+            out.append({"at": (topic.get("date") or 0) // 1000, "moves": moves})
+    return sorted(out, key=lambda t: -t["at"])
 
 
 def depth_charts():

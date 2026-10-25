@@ -392,6 +392,31 @@ def test_trade_helpers():
 
 
 
+def test_league_trades():
+    start = date(2026, 11, 2)
+    cal = FakeCal(start, 4, {"BOS": [0, 1, 2, 3], "MIA": [0, 1, 2, 3]}, now=0)
+    players = {1: player(1, owner=7, fppg=20.0, value=40.0), 2: player(2, owner=5, team="MIA", fppg=40.0, value=300.0),
+               6: player(6, owner=5, fppg=10.0, value=5.0), 8: player(8, owner=7, fppg=15.0, value=20.0),
+               9: player(9, owner=0, fa="FREEAGENT", fppg=12.0, value=0.0)}
+    for q in players.values():
+        q["odds"] = {str(g["date"]): 1.0 for g in cal.by_team[q["team"]]}
+        q["stats"] = {}
+    lg = {"starting": ["UT"], "matchups": [{"period": 1, "home": 5, "away": 3}],
+          "teams": {"3": {"roster": []}, "5": {"roster": [{"id": 2, "slot": "UT"}, {"id": 6, "slot": "BE"}]},
+                    "7": {"roster": [{"id": 1, "slot": "UT"}, {"id": 8, "slot": "BE"}]}}}
+    feed = [{"at": 0, "moves": [[2, 7, 5], [1, 5, None]]}]          # the feed left out who got player 1
+    out = advice.league_trades(lg, players, 3, cal, feed)
+    side = {x["team"]: x for x in out["list"][0]["sides"]}
+    assert side[5]["got"] == [2] and side[5]["gave"] == [1] and side[7]["got"] == [1], "receiver filled from the other side"
+    assert side[5]["gain"] == 4 * (40 - 20) and side[7]["gain"] == 4 * (20 - 40), \
+        "the lineups now against the same rosters with the trade undone: %s" % side
+    assert side[5]["value"] == 260 and side[5]["meets_me"] == 1 and side[7]["meets_me"] is None
+    assert out["unmatched"] == [], "both players are on their new rosters"
+    lg["teams"]["5"]["roster"] = [{"id": 6, "slot": "BE"}]
+    players[2]["owner"] = 7
+    assert advice.league_trades(lg, players, 3, cal, feed)["unmatched"] == [2], \
+        "a fresh trade whose player is not on his new roster is flagged"
+
 def test_hunches():
     start = date(2026, 11, 2)
     day = start + timedelta(days=1)
