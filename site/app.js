@@ -3,7 +3,7 @@
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
-  data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', ttab: 'ideas', pos: '', instant: false, q: '', who: 'all',
+  data: null, key: null, tab: 'today', wtab: 'adds', rtab: 'values', ttab: 'ideas', mkind: 'all', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
   st: { range: 'week', who: 'mine', per: 'game', view: 'min', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
 };
@@ -353,60 +353,89 @@ function viewWeek() {
 
 // ----- Trades: ideas for you, and the league's trades judged -----
 function viewTrades() {
-  const seg = [['ideas', 'Ideas for you'], ['league', 'League trades']]
+  const seg = [['ideas', 'Ideas for you'], ['league', 'League moves']]
     .map(([k, l]) => `<button data-ttab="${k}" class="${S.ttab === k ? 'on' : ''}">${l}</button>`).join('');
-  return `<div class="toolbar"><div class="seg">${seg}</div></div>${S.ttab === 'league' ? viewLeagueTrades() : viewTradeIdeas()}`;
+  return `<div class="toolbar"><div class="seg">${seg}</div></div>${S.ttab === 'league' ? viewLeagueMoves() : viewTradeIdeas()}`;
 }
 
-// Each league trade (d.league_trades): per team, what it got and gave, the change in its simulated daily lineups
-// (its roster now against the same roster with the trade undone), value on the dashboard's numbers and ESPN's,
+// The league's moves (d.league_moves: trades, waiver claims, pickups, drops), judged on today's numbers. Per team in a
+// move: what it got and gave, the change in its simulated daily lineups (its roster now against the same roster with
+// the move undone; simulated for trades and the latest moves only), value on the dashboard's numbers and ESPN's,
 // each player's games since, and where each player is now. Rosters are re-read from ESPN every refresh.
-function sinceTrade(id, at) {
+const MOVE_KIND = { trade: 'Trade', waiver: 'Claim', add: 'Pickup', drop: 'Drop' };
+function sinceMove(id, at) {
   const day = dayIndex(etIso(at)) + 1;
   const gs = ((S.data.gamelog || {})[String(id)] || []).filter(g => g[0] >= day);
   const fp = gs.reduce((a, g) => a + g[1], 0), min = gs.reduce((a, g) => a + g[2], 0);
-  return gs.length ? `${plural(gs.length, 'game')} since: ${n1(fp / gs.length)} a game in ${n0(min / gs.length)} min` : 'no games since';
+  return { n: gs.length, fppg: gs.length ? fp / gs.length : null, mpg: gs.length ? min / gs.length : null };
 }
-function viewLeagueTrades() {
-  const d = S.data, L = d.league_trades;
-  if (!L) return '<div class="empty">This view fills in after the next refresh.</div>';
-  const moved = L.list.flatMap(t => t.moves);
+function sinceText(id, at) {
+  const s = sinceMove(id, at);
+  return s.n ? `${plural(s.n, 'game')} since: ${n1(s.fppg)} a game in ${n0(s.mpg)} min` : 'no games since';
+}
+function gainCell(x) { return x == null ? '<span class="muted">–</span>' : `<span class="${x > 0 ? 'pos' : x < 0 ? 'neg' : ''}">${signed(x)}</span>`; }
+function factoredBanner(L) {
+  const moved = L.list.flatMap(t => t.moves).filter(m => m.to);
   const onNew = moved.filter(m => m.now === m.to).length;
-  const out = [`<div class="banner ${L.unmatched.length ? 'warn' : ''} small">${L.unmatched.length
-    ? `<b>Not factored in yet:</b> ${L.unmatched.map(id => esc(P(id).name)).join(', ')} ${L.unmatched.length === 1 ? 'is' : 'are'} not on the new roster in ESPN's data. Recommendations use the rosters as ESPN shows them, so they will catch up when ESPN does.`
-    : `<b>Factored in.</b> Every recommendation (waivers, streams, the week plan, trade ideas, matchup projections, standings outlook) reads the rosters fresh from ESPN on each refresh, so ${moved.length ? `these trades are already in them: ${onNew} of ${moved.length} traded players are on their new teams${onNew < moved.length ? ', and the rest have moved again since (shown below)' : ''}` : 'any trade is in them from the next refresh after ESPN processes it'}. Last checked ${esc(d.generated_label)}.`}</div>`];
-  if (!L.list.length) {
-    out.push('<div class="card muted">No trades in the league yet this season. They show here, judged on today\'s numbers, from the refresh after ESPN processes them.</div>');
-    return out.join('');
+  if (L.unmatched.length) return `<div class="banner warn small"><b>Not factored in yet:</b> ${L.unmatched.map(id => esc(P(id).name)).join(', ')}
+    ${L.unmatched.length === 1 ? 'is' : 'are'} not on the new roster in ESPN's data. Recommendations use the rosters as ESPN shows them, so they catch up when ESPN does.</div>`;
+  return `<div class="banner small"><b>Factored in.</b> Every recommendation (waivers, streams, the week plan, trade ideas, matchup projections, the
+    standings outlook) reads every roster fresh from ESPN on each refresh, including moves made after today's lock, which count from tomorrow.
+    ${moved.length ? `Of the ${moved.length} players picked up or traded below, ${onNew} are still on the team that got them${onNew < moved.length ? '; the rest have moved again (shown as "now")' : ''}.` : ''}
+    Last checked ${esc(S.data.generated_label)}.</div>`;
+}
+function viewLeagueMoves() {
+  const d = S.data, L = d.league_moves;
+  if (!L) return '<div class="empty">This view fills in after the next refresh.</div>';
+  const kinds = [['all', 'All'], ['trade', 'Trades'], ['pickup', 'Claims and pickups']]
+    .map(([k, l]) => `<button data-mkind="${k}" class="${S.mkind === k ? 'on' : ''}">${l}</button>`).join('');
+  const shown = L.list.filter(t => S.mkind === 'all' || (S.mkind === 'trade' ? t.kind === 'trade' : t.kind !== 'trade'));
+  const out = [factoredBanner(L), `<div class="toolbar"><div class="seg">${kinds}</div></div>`];
+  const trades = shown.filter(t => t.kind === 'trade'), others = shown.filter(t => t.kind !== 'trade');
+  if (!shown.length) out.push(`<div class="card muted">${S.mkind === 'trade' ? 'No trades in the league yet this season.' : 'No moves yet.'}</div>`);
+  for (const t of trades) out.push(tradeCard(t));
+  if (others.length) {
+    const rows = others.map(t => t.sides.map(sd => {
+      const tk = takesFor([...sd.got, ...sd.gave]);
+      const who = ids => ids.map(id => `<span class="pill" data-pid="${id}">${esc(P(id).name)} ${statusChip(P(id))}</span>`).join(' ') || '<span class="muted">–</span>';
+      const got = sd.got.map(id => { const sm = sinceMove(id, t.at); return sm.n ? `${n1(sm.fppg)} <span class="muted">(${sm.n})</span>` : '<span class="muted">–</span>'; }).join(', ') || '–';
+      return `<tr class="${sd.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(sd.team))}</b></td>
+        <td><span class="chip">${MOVE_KIND[t.kind]}</span>${tk.length ? ' <span class="chip take" title="Analyst take on a player here">TAKE</span>' : ''}</td>
+        <td>${who(sd.got)}</td><td>${who(sd.gave)}</td><td class="r">${got}</td>
+        <td class="r">${gainCell(sd.gain)}</td><td class="r">${signed(sd.value)}</td><td class="r">${signed(sd.espn)}</td></tr>`;
+    }).join('')).join('');
+    out.push(`<div class="card scroll-x"><table class="tbl"><thead><tr><th>When</th><th>Team</th><th></th><th>Added</th><th>Dropped</th>
+      <th class="r" title="Fantasy points a game since the move (games)">Since</th><th class="r" title="Season lineup points: roster now against the same roster with the move undone">Lineup</th>
+      <th class="r">Value</th><th class="r">ESPN</th></tr></thead><tbody>${rows}</tbody></table></div>`);
   }
-  for (const t of L.list) {
-    const ids = t.moves.map(m => m.id);
-    const sides = t.sides.map(sd => {
-      const tm = team(sd.team);
-      const where = id => { const m = t.moves.find(x => x.id === id); return m && m.now !== m.to ? ` <span class="muted small">(now ${esc(abbr(m.now))})</span>` : ''; };
-      const lines = id => `<div class="small muted" style="margin:2px 0 6px">${esc(P(id).name)}: ${n1(P(id).ros.fppg)} a game for the rest of the season, value ${n0(P(id).ros.value)}; ${sinceTrade(id, t.at)}${where(id)}</div>`;
-      return `<div class="card${sd.team === me() ? ' mine' : ''}" style="margin:8px 0 0">
-        <div class="t"><b>${esc(tm.abbrev)}</b> <span class="muted">${esc(tm.name)}</span>${sd.meets_me ? ` <span class="chip">plays you week ${sd.meets_me}</span>` : ''}</div>
-        <div class="who" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${sd.got.map(id => pill(id, 'got')).join('')}${sd.gave.map(id => pill(id, 'gave')).join('')}</div>
-        ${[...sd.got, ...sd.gave].map(lines).join('')}
-        <div class="tiles">
-          <div class="tile"><b class="${sd.gain > 0 ? 'pos' : sd.gain < 0 ? 'down' : ''}">${signed(sd.gain)}</b><span>season lineup points, about ${signed(sd.per_week)} a week</span></div>
-          <div class="tile"><b>${signed(sd.value)}</b><span>value on the dashboard's numbers</span></div>
-          <div class="tile"><b>${signed(sd.espn)}</b><span>on ESPN's projections</span></div>
-        </div></div>`;
-    }).join('');
-    const best = [...t.sides].sort((a, b) => b.gain - a.gain);
-    const verdict = best.length < 2 ? '' : Math.max(...best.map(x => Math.abs(x.gain))) < 50 ? 'About even on the dashboard\'s numbers.'
-      : `${esc(abbr(best[0].team))} comes out ahead on the dashboard's numbers: ${best.map(x => `${esc(abbr(x.team))} ${signed(x.gain)}`).join(', ')} season lineup points.`;
-    const takes = takesFor(ids);
-    out.push(`<div class="card"><div class="t"><b>${esc(t.sides.map(sd => abbr(sd.team)).join(' ⇄ '))}</b> <span class="muted">${esc(whenLabel(t.at))}</span></div>
-      <p class="small" style="margin:6px 0 0">${verdict}</p>${sides}${takes.map(takeBlock).join('')}</div>`);
-  }
-  out.push(`<p class="small muted"><b>Season lineup points</b>: the change in each team's best daily lineups over the rest of the season (playoff weeks 1.5×),
-    its roster now against the same roster with this trade undone, simulated as on the Week tab. Later moves stay in both, so it is what the trade is worth to them today.
-    <b>Value</b> is points above a waiver pickup for the players who moved; <b>ESPN's projections</b> are what ESPN's trade screen would have shown them.
-    Analyst takes on any player in a trade show under it.</p>`);
+  out.push(`<p class="small muted"><b>Lineup</b>: the change in that team's best daily lineups over the rest of the season (playoff weeks 1.5×),
+    its roster now against the same roster with the move undone, simulated as on the Week tab; later moves stay in both, so it is what the move
+    is worth to them today (simulated for trades and the latest 30 other moves). <b>Value</b>: points above a waiver pickup for the players
+    who moved; <b>ESPN</b>: the same on ESPN's projections. <b>Since</b>: fantasy points a game for the player added since the move.
+    Analyst takes on any player in a move show under a trade, or as TAKE on its row (open the player).</p>`);
   return out.join('');
+}
+function tradeCard(t) {
+  const ids = t.moves.map(m => m.id);
+  const sides = t.sides.map(sd => {
+    const tm = team(sd.team);
+    const where = id => { const m = t.moves.find(x => x.id === id); return m && m.now !== m.to ? ` <span class="muted small">(now ${esc(abbr(m.now))})</span>` : ''; };
+    const lines = id => `<div class="small muted" style="margin:2px 0 6px">${esc(P(id).name)}: ${n1(P(id).ros.fppg)} a game for the rest of the season, value ${n0(P(id).ros.value)}; ${sinceText(id, t.at)}${where(id)}</div>`;
+    return `<div class="card${sd.team === me() ? ' mine' : ''}" style="margin:8px 0 0">
+      <div class="t"><b>${esc(tm.abbrev)}</b> <span class="muted">${esc(tm.name)}</span>${sd.meets_me ? ` <span class="chip">plays you week ${sd.meets_me}</span>` : ''}</div>
+      <div class="who" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${sd.got.map(id => pill(id, 'got')).join('')}${sd.gave.map(id => pill(id, 'gave')).join('')}</div>
+      ${[...sd.got, ...sd.gave].map(lines).join('')}
+      <div class="tiles">
+        <div class="tile"><b class="${sd.gain > 0 ? 'pos' : sd.gain < 0 ? 'down' : ''}">${signed(sd.gain)}</b><span>season lineup points, about ${signed(sd.per_week)} a week</span></div>
+        <div class="tile"><b>${signed(sd.value)}</b><span>value on the dashboard's numbers</span></div>
+        <div class="tile"><b>${signed(sd.espn)}</b><span>on ESPN's projections</span></div>
+      </div></div>`;
+  }).join('');
+  const best = [...t.sides].sort((a, b) => b.gain - a.gain);
+  const verdict = best.length < 2 ? '' : Math.max(...best.map(x => Math.abs(x.gain))) < 50 ? 'About even on the dashboard\'s numbers.'
+    : `${esc(abbr(best[0].team))} comes out ahead on the dashboard's numbers: ${best.map(x => `${esc(abbr(x.team))} ${signed(x.gain)}`).join(', ')} season lineup points.`;
+  return `<div class="card"><div class="t"><span class="chip">Trade</span> <b>${esc(t.sides.map(sd => abbr(sd.team)).join(' ⇄ '))}</b> <span class="muted">${esc(whenLabel(t.at))}</span></div>
+    <p class="small" style="margin:6px 0 0">${verdict}</p>${sides}${takesFor(ids).map(takeBlock).join('')}</div>`;
 }
 
 function viewTradeIdeas() {
@@ -999,7 +1028,7 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-wtab],[data-rtab],[data-ttab],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-wtab],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
@@ -1014,6 +1043,7 @@ function boot() {
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
     if (t.dataset.rtab != null) { S.rtab = t.dataset.rtab; setItem('hq.rtab', S.rtab); render(); return; }
+    if (t.dataset.mkind != null) { S.mkind = t.dataset.mkind; render(); return; }
     if (t.dataset.ttab != null) { S.ttab = t.dataset.ttab; setItem('hq.ttab', S.ttab); render(); return; }
     if (t.dataset.pos != null) { S.pos = t.dataset.pos; render(); return; }
     if (t.dataset.who != null) { S.who = t.dataset.who; render(); return; }

@@ -14,7 +14,7 @@ from draftkit import espn
 from draftkit.config import SEASON, TEAMS
 
 POOL_LIMIT = 550        # every rostered player (156) plus the free agents anyone would add
-TRADED = 244            # activity-feed message type for a player moved in a trade
+ACTIVITY = {178: "add", 180: "waiver", 179: "drop", 181: "drop", 239: "drop", 244: "trade"}  # activity-feed message types
 
 
 def _clean(text):
@@ -74,22 +74,36 @@ def transactions(cookies, periods):
     return sorted(seen.values(), key=lambda t: -(t.get("processDate") or t.get("proposedDate") or 0))
 
 
-def league_trades(cookies, limit=200):
-    """Every trade this season, from the league's activity feed (one request; the transactions view
-    only covers a scoring period at a time) -> [{at, moves: [[player id, from team, to team], ...]}],
-    newest first. Each traded player is one message (type TRADED) in the trade's topic."""
+def league_moves(cookies, limit=200):
+    """The league's latest trades, waiver claims, free-agent adds and drops, from its activity feed (one
+    request; the transactions view only covers a scoring period at a time) -> [{at, kind: trade, waiver,
+    add or drop, moves: [[player id, from team, to team], ...]}], newest first, team 0 being free agency.
+    Each player moved is one message in the move's topic: adds and drops name the team in "to" (a
+    league-manager drop in "for"), a trade names both sides."""
     filt = {"topics": {"filterType": {"value": ["ACTIVITY_TRANSACTIONS"]}, "limit": limit, "offset": 0,
                        "limitPerMessageSet": {"value": 25},
                        "sortMessageDate": {"sortPriority": 1, "sortAsc": False},
-                       "filterIncludeMessageTypeIds": {"value": [TRADED]}}}
+                       "filterIncludeMessageTypeIds": {"value": sorted(ACTIVITY)}}}
     data = espn.get_json(espn.league_url() + "/communication/", {"view": "kona_league_communication"},
                          headers={"x-fantasy-filter": json.dumps(filt)}, cookies=cookies, timeout=30)
     out = []
     for topic in data.get("topics") or []:
-        moves = [[m["targetId"], m.get("from"), m.get("to")] for m in topic.get("messages") or []
-                 if m.get("messageTypeId") == TRADED and m.get("targetId")]
+        moves, kinds = [], set()
+        for m in topic.get("messages") or []:
+            kind, pid = ACTIVITY.get(m.get("messageTypeId")), m.get("targetId")
+            if not kind or not pid:
+                continue
+            kinds.add(kind)
+            if kind == "trade":
+                moves.append([pid, m.get("from"), m.get("to")])
+            elif kind in ("add", "waiver"):
+                moves.append([pid, 0, m.get("to")])
+            else:
+                team = m.get("to") if (m.get("to") or 0) > 0 else m.get("for")
+                moves.append([pid, team, 0])
         if moves:
-            out.append({"at": (topic.get("date") or 0) // 1000, "moves": moves})
+            kind = next(k for k in ("trade", "waiver", "add", "drop") if k in kinds)
+            out.append({"at": (topic.get("date") or 0) // 1000, "kind": kind, "moves": moves})
     return sorted(out, key=lambda t: -t["at"])
 
 

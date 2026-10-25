@@ -379,12 +379,12 @@ def test_week_plan_and_move_days():
 def test_tomorrows_rosters():
     from seasonkit import build
     lg = {"teams": {"3": {"id": 3, "roster": [{"id": 1, "slot": "UT"}, {"id": 2, "slot": "BE"}]}}}
-    nxt = [{"id": 3, "roster": {"entries": [{"playerId": 1, "lineupSlotId": 13}, {"playerId": 2, "lineupSlotId": 12},
+    nxt = [{"id": 3, "roster": {"entries": [{"playerId": 1, "lineupSlotId": 13}, {"playerId": 2, "lineupSlotId": 11},
                                             {"playerId": 5, "lineupSlotId": 12}]}}]
     build.roster_from_tomorrow(lg, nxt)
     t = lg["teams"]["3"]
     assert [(e["id"], e["slot"], e["today"]) for e in t["roster"]] == [(1, "IR", "UT"), (2, "BE", "BE"), (5, "BE", None)], \
-        "an IR move or add made after today's lock counts from tomorrow: %s" % t["roster"]
+        "an IR move or add made after today's lock counts from tomorrow; tomorrow's lineup slots are not: %s" % t["roster"]
     assert [e["slot"] for e in advice.roster(lg, 3, today=True)] == ["UT", "BE"], "today's lineup check keeps today's"
     assert [e["id"] for e in advice.roster(lg, 3, include_ir=False)] == [2, 5]
 
@@ -414,7 +414,7 @@ def test_trade_helpers():
 
 
 
-def test_league_trades():
+def test_league_moves():
     start = date(2026, 11, 2)
     cal = FakeCal(start, 4, {"BOS": [0, 1, 2, 3], "MIA": [0, 1, 2, 3]}, now=0)
     players = {1: player(1, owner=7, fppg=20.0, value=40.0), 2: player(2, owner=5, team="MIA", fppg=40.0, value=300.0),
@@ -426,8 +426,8 @@ def test_league_trades():
     lg = {"starting": ["UT"], "matchups": [{"period": 1, "home": 5, "away": 3}],
           "teams": {"3": {"roster": []}, "5": {"roster": [{"id": 2, "slot": "UT"}, {"id": 6, "slot": "BE"}]},
                     "7": {"roster": [{"id": 1, "slot": "UT"}, {"id": 8, "slot": "BE"}]}}}
-    feed = [{"at": 0, "moves": [[2, 7, 5], [1, 5, None]]}]          # the feed left out who got player 1
-    out = advice.league_trades(lg, players, 3, cal, feed)
+    feed = [{"at": 0, "kind": "trade", "moves": [[2, 7, 5], [1, 5, None]]}]   # the feed left out who got player 1
+    out = advice.league_moves(lg, players, 3, cal, feed)
     side = {x["team"]: x for x in out["list"][0]["sides"]}
     assert side[5]["got"] == [2] and side[5]["gave"] == [1] and side[7]["got"] == [1], "receiver filled from the other side"
     assert side[5]["gain"] == 4 * (40 - 20) and side[7]["gain"] == 4 * (20 - 40), \
@@ -436,8 +436,14 @@ def test_league_trades():
     assert out["unmatched"] == [], "both players are on their new rosters"
     lg["teams"]["5"]["roster"] = [{"id": 6, "slot": "BE"}]
     players[2]["owner"] = 7
-    assert advice.league_trades(lg, players, 3, cal, feed)["unmatched"] == [2], \
+    assert advice.league_moves(lg, players, 3, cal, feed)["unmatched"] == [2], \
         "a fresh trade whose player is not on his new roster is flagged"
+    lg["teams"]["5"]["roster"] = [{"id": 6, "slot": "BE"}, {"id": 9, "slot": "BE"}]
+    players[9]["owner"] = 5
+    add = advice.league_moves(lg, players, 3, cal, [{"at": 0, "kind": "add", "moves": [[9, 0, 5], [2, 5, 0]]}])
+    side = add["list"][0]["sides"]
+    assert [x["team"] for x in side] == [5] and side[0]["got"] == [9] and side[0]["gave"] == [2], "free agency is no side: %s" % side
+    assert add["unmatched"] == [], "a dropped player may be anywhere"
 
 def test_hunches():
     start = date(2026, 11, 2)

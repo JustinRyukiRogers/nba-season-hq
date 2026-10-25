@@ -128,19 +128,21 @@ for t in d["trades"]["list"][:2]:
     for pid in t["give"] + t["get"]:
         context(pid, "give" if pid in t["give"] else "get")
 
-section("LEAGUE TRADES (judged on today's numbers; rosters already reflect them)")
-L = d.get("league_trades") or {"list": [], "unmatched": []}
+section("LEAGUE MOVES (trades, claims, pickups; judged on today's numbers; rosters already reflect them)")
+L = d.get("league_moves") or {"list": [], "unmatched": []}
 if L["unmatched"]:
     print("  NOT YET ON NEW ROSTERS: " + ", ".join(map(name, L["unmatched"])))
-for t in L["list"][:5]:
-    print("\n  " + " <-> ".join(d["league"]["teams"][str(sd["team"])]["abbrev"] for sd in t["sides"]))
+recent = [t for t in L["list"] if t["kind"] == "trade"][:5] + [t for t in L["list"] if t["kind"] != "trade"][:8]
+for t in recent:
+    print("\n  %s %s" % (t["kind"].upper(), " <-> ".join(d["league"]["teams"][str(sd["team"])]["abbrev"] for sd in t["sides"])))
     for sd in t["sides"]:
-        print("    %s got %s, gave %s: %+d season lineup points, value %+d, ESPN %+d%s" % (
+        print("    %s got %s, gave %s: %s season lineup points, value %+d, ESPN %+d%s" % (
             d["league"]["teams"][str(sd["team"])]["abbrev"], " + ".join(map(name, sd["got"])) or "-",
-            " + ".join(map(name, sd["gave"])) or "-", sd["gain"], sd["value"], sd["espn"],
-            ", plays you week %d" % sd["meets_me"] if sd.get("meets_me") else ""))
-    for m in t["moves"]:
-        context(m["id"], "moved")
+            " + ".join(map(name, sd["gave"])) or "-", "%+d" % sd["gain"] if sd["gain"] is not None else "?",
+            sd["value"], sd["espn"], ", plays you week %d" % sd["meets_me"] if sd.get("meets_me") else ""))
+    if t["kind"] == "trade":
+        for m in t["moves"]:
+            context(m["id"], "moved")
 if not L["list"]:
     print("  none this season")
 

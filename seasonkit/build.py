@@ -76,8 +76,9 @@ def roster_from_tomorrow(league, raw_next):
     """Rosters as they will stand from the next scoring day. ESPN locks rosters at a day's first tip, so
     an IR move, add or drop made after it counts from tomorrow and only shows in tomorrow's rosters.
     Every move suggestion works from those (adds count from tomorrow too); today's lineup check keeps
-    today's. Each team's "roster" becomes tomorrow's, its entries carrying "today": the slot today
-    (None for a player not on it today), and "roster_today" keeps today's."""
+    today's. Each team's "roster" becomes tomorrow's players, each keeping today's slot unless he
+    moves in or out of IR, and carrying "today": the slot today (None for a player added after the
+    lock); "roster_today" keeps today's."""
     nxt = {t["id"]: roster_entries(t) for t in raw_next or []}
     for t in league["teams"].values():
         today = t["roster"]
@@ -86,8 +87,16 @@ def roster_from_tomorrow(league, raw_next):
             for e in today:
                 e["today"] = e["slot"]
             continue
-        slot = {e["id"]: e["slot"] for e in today}
-        t["roster"] = [dict(e, today=slot.get(e["id"])) for e in nxt[t["id"]]]
+        now = {e["id"]: e for e in today}
+        t["roster"] = []
+        for e in nxt[t["id"]]:
+            was = now.get(e["id"])
+            if was is None:                       # added after the lock
+                t["roster"].append(dict(e, today=None))
+            elif (was["slot"] == "IR") != (e["slot"] == "IR"):
+                t["roster"].append(dict(was, slot=e["slot"], today=was["slot"]))
+            else:                                 # tomorrow's lineup slots are not set yet: keep today's
+                t["roster"].append(dict(was, today=was["slot"]))
     return league
 
 
@@ -332,13 +341,13 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     plan = advice.week_plan(league, players, me, calendar, txs, reserve)
     trades = advice.trade_ideas(league, players, me, calendar)
     try:
-        league_trades = advice.league_trades(league, players, me, calendar, pull.league_trades(cookies))
+        league_moves = advice.league_moves(league, players, me, calendar, pull.league_moves(cookies))
     except Exception as err:
-        problems.append("league trades failed (%s)" % type(err).__name__)
-        league_trades = None
-    if league_trades and league_trades["unmatched"]:
-        problems.append("traded players not yet on their new rosters: %s" % ", ".join(
-            players[x]["name"] for x in league_trades["unmatched"]))
+        problems.append("league moves failed (%s)" % type(err).__name__)
+        league_moves = None
+    if league_moves and league_moves["unmatched"]:
+        problems.append("players moved but not yet on their new rosters: %s" % ", ".join(
+            players[x]["name"] for x in league_moves["unmatched"]))
 
     # starts, not games: what each roster's best daily lineups get out of it, if it is held
     for tid, t in league["teams"].items():
@@ -387,7 +396,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
-        "plan": plan, "trades": trades, "league_trades": league_trades,
+        "plan": plan, "trades": trades, "league_moves": league_moves,
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,

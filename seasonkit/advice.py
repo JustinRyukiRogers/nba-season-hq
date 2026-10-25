@@ -38,8 +38,9 @@ TRADE_SAMPLES = 60           # simulated days per lineup; every trade is scored 
 TRADE_MIN_GAIN = 100.0       # rest-of-season lineup points (playoff weeks 1.5x) before a trade is listed
 TRADE_SHOW, TRADE_PER_TEAM, TRADE_PER_PLAYER = 10, 3, 3
 TRADE_ACTION_GAIN = 250.0    # a trade idea this good goes on the to-do list
-LEAGUE_TRADES_SHOW = 20      # the league's latest trades judged on the Trades tab
-LEAGUE_TRADE_RECENT = 2 * 86400  # a trade this fresh whose players are not on their new rosters yet is flagged
+LEAGUE_MOVES_SHOW = 80       # the league's latest moves (trades, claims, pickups) on the Trades tab
+LEAGUE_MOVES_JUDGED = 30     # of those, the latest non-trades whose lineup change is simulated
+LEAGUE_TRADE_RECENT = 2 * 86400  # a move this fresh whose players are not on their new rosters yet is flagged
 
 # How urgent a to-do is. now: it costs points or blocks you today. soon: it has a deadline, or
 # someone may get there first. optional: a small gain, or no one is racing you. fyi: nothing to do.
@@ -606,13 +607,14 @@ def trade_ideas(league, players, me, calendar):
     return {"list": shown[:TRADE_SHOW], "weeks_left": weeks_left, "deadline": deadline // 1000 if deadline else None,
             "refill": refill, "base": round(base_me)}
 
-def league_trades(league, players, me, calendar, trades, top=LEAGUE_TRADES_SHOW):
-    """The league's trades, judged on today's numbers: for each team in a trade, what it got and gave,
-    the change in its simulated daily lineups over the rest of the season (playoff weeks 1.5x: its
-    roster now against the same roster with the trade undone), the change in value on the dashboard's
-    numbers and on ESPN's, and when it plays you next. Each moved player also says where he is now:
-    rosters are read fresh from ESPN on every refresh, so a player shown on his new team is in every
-    recommendation; one found nowhere expected is listed in "unmatched"."""
+def league_moves(league, players, me, calendar, feed, top=LEAGUE_MOVES_SHOW, judged=LEAGUE_MOVES_JUDGED):
+    """The league's trades, waiver claims and pickups (pull.league_moves), judged on today's numbers: for
+    each team in a move, what it got and gave, the change in its simulated daily lineups over the rest
+    of the season (playoff weeks 1.5x: its roster now against the same roster with the move undone),
+    the change in value on the dashboard's numbers and on ESPN's, and when it plays you next. The lineup
+    change is simulated for every trade and the latest `judged` other moves. Each player also says where
+    he is now: rosters are read fresh from ESPN on every refresh, so a player shown on his new team is
+    in every recommendation; one found elsewhere soon after the move is listed in "unmatched"."""
     days = calendar.days_left()
     starting = league["starting"]
     rosters = {int(tid): [e["id"] for e in t["roster"] if e["id"] in players] for tid, t in league["teams"].items()}
@@ -620,25 +622,44 @@ def league_trades(league, players, me, calendar, trades, top=LEAGUE_TRADES_SHOW)
     espn_repl = healthy[min(len(healthy) - 1, REPLACEMENT_FA_RANK - 1)] if healthy else 0.0
     weeks_left = max(1, len(calendar.weeks) - (calendar.current_week() or 0))
     week_now = calendar.current_week() or 0
+    val = lambda ids: sum(players[x]["ros"]["value"] for x in ids)
+    espn = lambda ids: sum(espn_value(players[x], espn_repl) for x in ids)
+    fill = [p["id"] for p in sorted((p for p in free_agents(players, instant_only=True)
+                                     if not p["ros"]["out"] and p["ros"]["games"] > 0),
+                                    key=lambda p: -p["ros"]["fppg"])][REPLACEMENT_FA_RANK - 1:]   # waiver level
 
     def sim(ids):
         return project_days(ids, days, players, starting, calendar, samples=TRADE_SAMPLES, weighted=True)[0]
+
+    def even(a, b):
+        """Both rosters at the same size, the short one topped up with waiver-level free agents (the
+        replacement rank down): a spot a move opens or fills is worth a waiver pickup, not nothing."""
+        a, b = list(a), list(b)
+        for short, other in ((a, b), (b, a)):
+            extra = [x for x in fill if x not in a and x not in b]
+            while len(short) < len(other) and extra:
+                short.append(extra.pop(0))
+        return a, b
 
     def meets(tid):
         """The next matchup week (1-based) against you, from this week on."""
         return next((m["period"] for m in sorted(league["matchups"], key=lambda m: m["period"])
                      if m["period"] >= week_now + 1 and {m["home"], m["away"]} == {me, tid}), None)
 
-    out, unmatched = [], []
-    for t in trades[:top]:
+    out, unmatched, others, seen = [], [], 0, set()
+    for t in feed[:top]:
+        simulate = bool(days) and (t["kind"] == "trade" or others < judged)
+        others += t["kind"] != "trade"
         moves = []
         for pid, frm, to in t["moves"]:
             owner = players[pid]["owner"] if pid in players else None
-            if to not in rosters:                     # the feed left the receiver out: the trade's other side
+            if t["kind"] == "trade" and to not in rosters:   # the feed left the receiver out: the trade's other side
                 to = next((m[1] for m in t["moves"] if m[1] in rosters and m[1] != frm), owner)
-            moves.append({"id": pid, "from": frm, "to": to, "now": owner})
-            if owner != to and pid in players and t["at"] >= calendar.now - LEAGUE_TRADE_RECENT:
+            moves.append({"id": pid, "from": frm or 0, "to": to or 0, "now": owner})
+            if (to and owner != to and pid in players and pid not in seen     # his latest move only
+                    and t["at"] >= calendar.now - LEAGUE_TRADE_RECENT):
                 unmatched.append(pid)
+            seen.add(pid)
         sides = []
         for tid in sorted({m["to"] for m in moves} | {m["from"] for m in moves}):
             if tid not in rosters:
@@ -647,13 +668,17 @@ def league_trades(league, players, me, calendar, trades, top=LEAGUE_TRADES_SHOW)
             gave = [m["id"] for m in moves if m["from"] == tid and m["id"] in players]
             now = rosters[tid]
             before = [x for x in now if x not in got] + [x for x in gave if x not in now]
-            gain = sim(now) - sim(before) if days else 0.0
-            val = lambda ids: sum(players[x]["ros"]["value"] for x in ids)
-            espn = lambda ids: sum(espn_value(players[x], espn_repl) for x in ids)
-            sides.append({"team": tid, "got": got, "gave": gave, "gain": round(gain), "per_week": round(gain / weeks_left),
+            if simulate:
+                a, b = even(now, before)
+                gain = sim(a) - sim(b)
+            else:
+                gain = None
+            sides.append({"team": tid, "got": got, "gave": gave,
+                          "gain": None if gain is None else round(gain),
+                          "per_week": None if gain is None else round(gain / weeks_left),
                           "value": round(val(got) - val(gave)), "espn": round(espn(got) - espn(gave)),
                           "meets_me": meets(tid) if tid != me else None})
-        out.append({"at": t["at"], "moves": moves, "sides": sides})
+        out.append({"at": t["at"], "kind": t["kind"], "moves": moves, "sides": sides})
     return {"list": out, "unmatched": unmatched, "weeks_left": weeks_left}
 
 
