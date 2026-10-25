@@ -160,6 +160,19 @@ p.lead { color: var(--ink-2); margin: 4px 0 10px; }
 .chip.slot { background: none; border: 1px solid var(--line-strong); color: var(--ink-2); min-width: 28px; text-align: center; }
 .chip.ir { border-color: var(--critical); color: var(--critical); }
 .chip.new { background: var(--accent); color: #fff; }
+.chip.take { background: none; border: 1px solid currentColor; color: var(--accent-ink); }
+.chip.take.against { color: var(--serious-ink); }
+.chip.take.for { color: var(--good-ink); }
+
+/* analyst takes: set apart from the model's numbers */
+.take { margin-top: 8px; padding: 6px 10px; border-left: 3px solid var(--line-strong); background: var(--wash); border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink-2); }
+.take .tk { font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; margin-right: 6px; }
+.take .tk.for { color: var(--good-ink); }
+.take .tk.against { color: var(--serious-ink); }
+.take .tk.caution { color: var(--warning-ink); }
+.take .tk.info { color: var(--accent-ink); }
+.take .when { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.card > .who { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* player rows */
 .rows { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 8px 0; }

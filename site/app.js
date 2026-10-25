@@ -112,7 +112,9 @@ function isNew(p) {
 function row(p, nums, opts = {}) {
   if (!p) return '';
   const cls = 'row' + (p.owner === me() && !opts.plain ? ' mine' : '') + (opts.cls ? ' ' + opts.cls : '');
-  const badge = (opts.badge || '') + (isNew(p) ? ' <span class="chip new" title="News since you last looked">NEW</span>' : '');
+  const tk = takesFor([p.id])[0];
+  const badge = (opts.badge || '') + (isNew(p) ? ' <span class="chip new" title="News since you last looked">NEW</span>' : '')
+    + (tk ? ` <span class="chip take ${tk.stance}" title="Analyst take (${STANCE[tk.stance]}): ${esc(clip(tk.text, 160))}">TAKE</span>` : '');
   const left = `<div class="who"><div class="nm">${opts.prefix || ''}${esc(p.name)} ${statusChip(p)} ${faChip(p)}${badge}</div>`
     + `<div class="meta">${opts.meta || meta(p)}</div></div>`;
   const right = `<div class="nums">${nums.map(([label, value, c, optional]) =>
@@ -177,6 +179,11 @@ function viewToday() {
     out.push(`<p class="small muted">${URGENCY.now}: it costs points or blocks you today. ${URGENCY.soon}: it has a deadline, or someone may get there first.
       ${URGENCY.optional}: a small gain, or no one is racing you.</p>`);
   }
+  const takes = d.takes || [];
+  if (takes.length) {
+    out.push(`<h2>Analyst takes <span class="sub">judgment calls the numbers can't see; they never change the numbers</span></h2>`);
+    for (const t of takes) out.push(`<div class="card"><div class="who">${t.pids.map(id => pill(id)).join(' ')}</div>${takeBlock(t)}</div>`);
+  }
   out.push(matchupCard());
   out.push(lineupCard());
   return out.join('');
@@ -209,12 +216,25 @@ function actionCard(a) {
     + (a.detail ? `<div class="d">${esc(a.detail)}</div>` : '')
     + (a.steps && a.steps.length ? `<ol class="steps">${a.steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
     + (pills.length ? `<div class="who">${pills.join('')}</div>` : '')
-    + (a.why ? `<div class="why"><b>${WHY[u]}:</b> ${esc(a.why)}</div>` : '') + '</div>';
+    + (a.why ? `<div class="why"><b>${WHY[u]}:</b> ${esc(a.why)}</div>` : '')
+    + takesFor([a.player, a.other, a.drop, ...(a.start || []), ...(a.sit || []), ...(a.give || []), ...(a.get || [])]).map(takeBlock).join('')
+    + '</div>';
 }
 function pill(id, label) {
   const p = P(id);
   if (!p) return '';
   return `<span class="pill" data-pid="${p.id}">${label ? `<span class="lbl">${esc(label)}</span>` : ''}${esc(p.name)} ${statusChip(p)}</span>`;
+}
+
+// ---------- analyst takes: judgment calls shown beside the numbers (data/takes.json), never part of them ----------
+const STANCE = { for: 'For', against: 'Against', caution: 'Caution', info: 'Note' };
+function takesFor(ids) {
+  const want = new Set(ids.filter(x => x != null).map(String));
+  return (S.data.takes || []).filter(t => t.pids.some(id => want.has(String(id))));
+}
+function takeBlock(t) {
+  return `<div class="take"><span class="tk ${t.stance}">Analyst · ${STANCE[t.stance]}</span>${t.on ? `<b>${esc(t.on)}.</b> ` : ''}${esc(t.text)}`
+    + ` <span class="when">Written ${esc(dayShort(t.written))}, until ${esc(dayShort(t.until))}</span></div>`;
 }
 
 function matchupCard() {
@@ -768,6 +788,7 @@ function openPlayer(id) {
       <dt>Expected back</dt><dd>${i.return ? esc(dayLabel(i.return)) + ' (ESPN estimate)' : '–'}</dd>
       <dt>Updated</dt><dd>${i.updated ? esc(whenLabel(Date.parse(i.updated) / 1000)) : '–'}</dd>` : ''}</dl>
       ${i && i.short ? `<p class="small">${esc(i.short)}</p>` : ''}${i && i.long && i.long !== i.short ? `<p class="small muted">${esc(i.long)}</p>` : ''}</div>` : ''}
+    ${takesFor([p.id]).length ? `<div class="sec"><div class="h">Analyst take</div>${takesFor([p.id]).map(takeBlock).join('')}</div>` : ''}
     <div class="sec"><div class="h">Rest of season</div><dl class="kv">
       <dt>Per game</dt><dd><b>${n1(r.fppg)}</b> · ${prior}</dd>
       <dt>Games</dt><dd>${n1(r.games)} expected of ${r.team_games} left${r.absent ? ` · ${n1(r.absent)} missed while Out` : ''} · ${n1(r.playoff_games)} in the playoff weeks</dd>

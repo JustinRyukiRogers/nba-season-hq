@@ -6,7 +6,7 @@ The hosted copy runs this from GitHub Actions every 20 minutes, then encrypts th
 """
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from draftkit import calibrate, espn
 from draftkit.config import (DATA, DEFAULT_SCORING, FGA, FGM, FTA, FTM, MIN, PTS, ROOT, SEASON, SLOT_NAMES, TEAMS,
@@ -18,6 +18,9 @@ from . import advice, model, pull
 SITE = ROOT / "site"
 CACHE = ROOT / "cache"                 # public data only (news, schedule, injuries); safe to keep in CI
 NOTES = DATA / "season_notes.json"
+TAKES = DATA / "takes.json"            # analyst takes: private, committed encrypted as takes.enc
+TAKE_STANCES = ("for", "against", "caution", "info")
+TAKE_DAYS = 7                          # a take with no end date lapses a week after it was written
 GAMELOG = CACHE / "gamelog.json"      # every pool player's finished games this season, for the Stats tab
 GAMELOG_SETTLE = 3.5 * 3600            # seconds after tip-off before a game counts as finished
 GAMELOG_OVERLAP = 3                    # scoring days re-read each refresh, for stat corrections
@@ -145,6 +148,46 @@ def load_notes(players):
         if pid:
             out[pid] = note
     return out
+
+
+def load_takes(players, today, problems):
+    """data/takes.json: judgment calls shown beside the numbers, never fed into them. Each take names
+    a player (and any others it is about, "also") and lapses after "until" (default TAKE_DAYS after
+    "written"). -> [{"pids", "stance", "on", "text", "written", "until"}], live ones only."""
+    raw = (read_json(TAKES, {}) or {}).get("takes") or []
+    by_name = {norm_name(p["name"]): pid for pid, p in players.items()}
+    out = []
+    for t in raw:
+        written = model.parse_day(t["written"])
+        until = model.parse_day(t["until"]) if t.get("until") else written + timedelta(days=TAKE_DAYS)
+        if until < today:
+            continue
+        names = [t["player"]] + list(t.get("also") or [])
+        pids = [by_name.get(norm_name(n)) for n in names]
+        if not pids[0]:
+            problems.append("analyst take on %s: no such player in the pool" % t["player"])
+            continue
+        stance = t.get("stance") if t.get("stance") in TAKE_STANCES else "info"
+        out.append({"pids": [pid for pid in pids if pid], "stance": stance, "on": t.get("on"), "text": t["text"],
+                    "written": str(written), "until": str(until)})
+    return out
+
+
+def seal_takes():
+    """Encrypt data/takes.json with the site passphrase (.env SITE_PASSPHRASE) to data/takes.enc,
+    which is committed; the refresh on GitHub decrypts it. The repo is public, takes are not."""
+    import os
+    import subprocess
+    env = dict(os.environ)
+    for line in (ROOT / ".env").read_text().splitlines() if (ROOT / ".env").exists() else []:
+        if line.strip().startswith("SITE_PASSPHRASE="):
+            env["SITE_PASSPHRASE"] = line.split("=", 1)[1].strip().strip("'\"")
+    if not env.get("SITE_PASSPHRASE"):
+        raise SystemExit("SITE_PASSPHRASE is not set in .env or the environment")
+    json.loads(TAKES.read_text())          # refuse to seal a file that does not parse
+    subprocess.run(["node", str(ROOT / "seasonkit" / "crypt.mjs"), "encrypt", str(TAKES), str(DATA / "takes.enc")],
+                   check=True, env=env)
+    print("sealed %s -> data/takes.enc; commit and push it" % TAKES.name)
 
 
 def normalize_transactions(txs, limit=40):
@@ -297,7 +340,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "priors_from": priors.get("board_generated")},
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
-        "hunches": hunch_list,
+        "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
         "plan": plan, "trades": trades,
         "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
@@ -442,6 +485,10 @@ def summary(data):
         print("  [%s%s] %s" % (a["urgency"], by, a["title"]))
         if a.get("why"):
             print("      why: %s" % a["why"])
+    if data.get("takes"):
+        print("\nanalyst takes:")
+        for t in data["takes"]:
+            print("  [%s until %s] %s: %s" % (t["stance"], t["until"], pl[str(t["pids"][0])]["name"], t["text"][:110]))
     print("\nyour roster (lowest value first is the drop order):")
     for e in sorted(lg["teams"][me]["roster"], key=lambda e: -pl[str(e["id"])]["ros"]["value"]):
         p = pl[str(e["id"])]

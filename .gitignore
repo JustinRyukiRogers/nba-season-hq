@@ -8,6 +8,7 @@ cache/
 
 # kept off the public repo: research notes, the draft-night board, league files and raw pulls
 data/intel.json
+data/takes.json
 data/board.json
 data/league.json
 data/league_history.json

@@ -38,6 +38,12 @@ jobs:
           key: public-${{ github.run_id }}
           restore-keys: public-
 
+      - name: Decrypt analyst takes
+        env:
+          SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}
+        run: |
+          if [ -f data/takes.enc ]; then node seasonkit/crypt.mjs decrypt data/takes.enc data/takes.json; fi
+
       - name: Refresh from ESPN
         env:
           ESPN_S2: ${{ secrets.ESPN_S2 }}

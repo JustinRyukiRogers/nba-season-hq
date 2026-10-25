@@ -227,6 +227,27 @@ def test_shot_xfp():
     assert abs(row[5] - 6.0) < 0.05, "30 minutes at 0.2 other points a minute"
 
 
+def test_takes():
+    from seasonkit import build
+    tmp = Path(tempfile.mkdtemp()) / "takes.json"
+    tmp.write_text(json.dumps({"takes": [
+        {"player": "Al One", "also": ["Bo Two", "Nobody"], "stance": "against", "text": "a", "written": "2026-10-25"},
+        {"player": "Al One", "stance": "maybe", "text": "b", "written": "2026-10-20", "until": "2026-11-01"},
+        {"player": "Bo Two", "stance": "for", "text": "stale", "written": "2026-10-01"},
+        {"player": "Cy Gone", "stance": "for", "text": "c", "written": "2026-10-25"}]}))
+    players = {1: {"name": "Al One"}, 2: {"name": "Bo Two"}}
+    problems, old = [], build.TAKES
+    build.TAKES = tmp
+    try:
+        takes = build.load_takes(players, date(2026, 10, 26), problems)
+    finally:
+        build.TAKES = old
+    assert [t["text"] for t in takes] == ["a", "b"], "a take lapses after its end date (default a week)"
+    assert takes[0]["pids"] == [1, 2] and takes[0]["until"] == "2026-11-01", "others it concerns come along"
+    assert takes[1]["stance"] == "info", "an unknown stance is shown as a plain note"
+    assert problems and "Cy Gone" in problems[0], "a take on no known player is reported, not dropped silently"
+
+
 def test_depth_roles():
     from seasonkit import build
     mk = lambda pid, team, status="ACTIVE": {"id": pid, "name": "P%d" % pid, "team": team, "status": status}
