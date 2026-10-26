@@ -89,6 +89,26 @@ def plural(n, word):
 
 # ---------- injured reserve ----------
 
+def ir_returns(league, players, team_id):
+    """Players in a team's IR slots who are no longer tagged Out: ESPN blocks the team's adds until
+    they are activated."""
+    return [e["id"] for e in roster(league, team_id) if e["slot"] == "IR" and e["id"] in players
+            and players[e["id"]]["status"] != "OUT"]
+
+
+def activated(league, players, team_id, ids):
+    """The roster `ids` (outside IR) once every player back from IR is activated, each in place of the
+    lowest-valued player when no roster spot is open (as the ir_blocked to-do says).
+    -> (ids, [{"id", "drop"}], open roster spots left)."""
+    ids, acts, room = list(ids), [], open_room(league, ids)
+    for pid in ir_returns(league, players, team_id):
+        drop = None if room > 0 else weakest(players, [{"id": x} for x in ids])
+        room -= drop is None
+        acts.append({"id": pid, "drop": drop})
+        ids = [x for x in ids if x != drop] + [pid]
+    return ids, acts, room
+
+
 def ir_actions(league, players, me):
     """ESPN only lets a player tagged Out into an IR slot, and a player in IR who is no longer Out
     blocks every add and claim until he is activated."""
@@ -225,11 +245,11 @@ def stash(league, players, me, free_ir, top=12):
     rows = [p for p in free_agents(players) if p["status"] == "OUT" and not p["ros"]["season_over"]
             and p["ros"]["value"] > 0]
     rows.sort(key=lambda p: -p["ros"]["value"])
-    active = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
-    room = open_room(league, active)
+    active, _, room = activated(league, players, me,        # after activating anyone back from IR
+                                [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players])
     spot = stream_spots(players, active, room)
     drop = None if room > 0 else (min(spot, key=lambda pid: players[pid]["ros"]["value"]) if spot
-                                  else weakest(players, roster(league, me, include_ir=False)))
+                                  else weakest(players, [{"id": x} for x in active]))
     healthy = sorted((p for p in free_agents(players) if not p["ros"]["out"]), key=lambda p: -p["ros"]["value"])
     return {"free_ir": free_ir, "drop": drop, "open": room > 0, "drop_is_spot": drop in spot,
             "refill": healthy[0]["id"] if healthy else None,
@@ -402,7 +422,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
     pick = pick or players
     days = week_days(calendar)
     if not days or calendar.today > calendar.end:
-        return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
+        return {"days": [], "moves": [], "activate": [], "lineups": [], "points": 0.0, "points_now": 0.0}
     starting = league["starting"]
     can_move = set(move_days(league, calendar, me, txs))
     next_week = bool(can_move) and min(can_move) > days[-1]
@@ -414,10 +434,13 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
     ids = [e["id"] for e in roster(league, me, include_ir=False) if e["id"] in players]
     held = list(ids)
     used, moves = set(ids), []
-    open_spots = open_room(league, ids)
-    spot = stream_spots(pick, ids, open_spots)
+    # a player in IR who is no longer Out blocks every add: he is activated first (no add used)
+    held, activate, open_spots = activated(league, players, me, ids)
+    for a in activate:
+        used |= {a["id"], a["drop"]}
+    spot = stream_spots(pick, held, open_spots)
     for i, d in enumerate(days):
-        if d not in can_move or len(moves) >= cap:
+        if d not in can_move or sum(m["kind"] == "add" for m in moves) >= cap:
             continue
         if stash:
             moves.append({"kind": "stash", "id": stash["id"], "drop": stash.get("drop"), "spot": False, "gain": 0.0,
@@ -443,9 +466,16 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
         if m["spot"]:
             spot = (spot - {m["drop"]}) | {m["id"]}
 
+    # an activation waits for the day it is needed: his first game or the first planned move, so the
+    # player dropped for him keeps any games before then
+    for a in activate:
+        need = [d for d in days if str(d) in players[a["id"]]["odds"]] + [parse_day(m["day"]) for m in moves]
+        a["day"] = str(min(need)) if need else None
+        a["by"] = calendar.first_tip(min(need)) if need else None
     lineups, total, rosters = [], 0.0, list(ids)
     locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False, today=True)}
     today_ids = [pid for pid in locked if pid in players]
+    today_plan = list(today_ids)
     # the same days with the roster as it is now, no adds: what you get if you make no move
     as_is, as_is_total = [], 0.0
     for d in days:
@@ -455,16 +485,22 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
         as_is_total += day["points"]
         as_is.append(day)
     for d in days:
+        for a in activate:
+            if a["day"] == str(d):
+                rosters = [pid for pid in rosters if pid != a["drop"]] + [a["id"]]
+                if d == calendar.today:
+                    today_plan = [pid for pid in today_plan if pid != a["drop"]] + [a["id"]]
         for m in moves:
             if m["day"] == str(d):   # a stash goes to IR, out of the lineup
                 rosters = [pid for pid in rosters if pid != m["drop"]] + ([m["id"]] if m["kind"] == "add" else [])
-        day = day_lineup(today_ids if d == calendar.today else rosters, d, players, starting, calendar,
+        day = day_lineup(today_plan if d == calendar.today else rosters, d, players, starting, calendar,
                          locked if d == calendar.today else {})
         day["moves"] = [m for m in moves if m["day"] == str(d)]
         total += day["points"]
         lineups.append(day)
     now_pts, _, _ = project_days(ids, days, players, starting, calendar)
-    return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "lineups": lineups, "points": round(total, 1),
+    return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "activate": activate,
+            "lineups": lineups, "points": round(total, 1),
             "as_is": {"lineups": as_is, "points": round(as_is_total, 1)},
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
             "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
@@ -748,24 +784,52 @@ H2H_MOVES_DAYS = 10       # the opponent's moves shown, days back
 
 
 def h2h(league, players, me, calendar, match, plan=None, moves=None, txs=()):
-    """The head-to-head detail for a matchup from `matchup`: each side's best lineup for every day left
-    (today's ESPN slots hold for anyone locked), who carries each side's week, the opponent's recent
-    moves and adds, what they could still gain by streaming the best free agent each day, their
-    players in doubt, and the calls that follow. Adds `match["h2h"]`; returns match."""
+    """The head-to-head detail for a matchup from `matchup`. Each side two ways ("views"): its roster as
+    it is, and with moves: yours the week plan's (IR activations, stashes, adds), theirs anyone back
+    from IR activated plus the best free agent streamed each day an add counts (one a day, in place of
+    their lowest-valued player). Each view: the best lineup for every day left (today's ESPN slots hold
+    for anyone locked), its points and expected starts, and who carries it. Also the opponent's recent
+    moves and adds, their players in doubt, and the calls that follow. Adds `match["h2h"]`."""
     if not match or not match.get("me") or not match.get("them"):
         return match
     starting, opp, ahead = league["starting"], match["opp"], match["ahead"]
     days = [parse_day(d) for d, _, _ in match["me"]["by_day"]]
-    sides = {}
-    for side, tid in (("me", me), ("them", opp)):
-        ids = [e["id"] for e in roster(league, tid, include_ir=False) if e["id"] in players]
+    first = calendar.first_tip(calendar.today)
+    add_days = [d for d in days if d > calendar.today or (d == calendar.today and not (first and calendar.now >= first))]
+    pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
+
+    def view(tid, rosters, score, lineups=None):
+        """rosters: each day's players (today's: those ESPN has on the team today)."""
         locked = {} if ahead else {e["id"]: e["slot"] for e in roster(league, tid, include_ir=False, today=True)}
-        today_ids = [pid for pid in locked if pid in players]
-        lineups = [day_lineup(today_ids if d == calendar.today and not ahead else ids, d, players, starting, calendar,
-                              locked if d == calendar.today else {}) for d in days]
-        _, _, by_player = project_days(ids, days, players, starting, calendar)
-        carry = sorted(([pid, round(s, 1), round(pts, 1), sum(1 for d in days if players[pid]["odds"].get(str(d)))]
-                        for pid, (s, pts) in by_player.items()), key=lambda r: -r[2])
+        if lineups is None:
+            lineups = [day_lineup(r, d, players, starting, calendar, locked if d == calendar.today else {})
+                       for d, r in zip(days, rosters)]
+        by = defaultdict(lambda: [0.0, 0.0, 0])
+        for d, r in zip(days, rosters):
+            _, _, bp = project_days(r, [d], players, starting, calendar)
+            for pid, (st, pts) in bp.items():
+                by[pid][0] += st
+                by[pid][1] += pts
+                by[pid][2] += 1
+        carry = sorted(([pid, round(st, 1), round(pts, 1), g] for pid, (st, pts, g) in by.items()), key=lambda r: -r[2])
+        pts = sum(lu["points"] for lu in lineups)
+        return {"lineups": lineups, "carry": carry, "points": round(pts, 1), "total": round((score or 0.0) + pts, 1),
+                "starts": round(sum(lu["starts"] for lu in lineups), 1),
+                "open": [round(len(starting) - lu["starts"], 1) for lu in lineups]}
+
+    def base(tid):
+        ids = [e["id"] for e in roster(league, tid, include_ir=False) if e["id"] in players]
+        today_ids = [e["id"] for e in roster(league, tid, include_ir=False, today=True) if e["id"] in players]
+        return ids, today_ids
+
+    def swap(ids, drop, add):
+        return [x for x in ids if x != drop] + ([add] if add else [])
+
+    views, info = {}, {}
+    for side, tid in (("me", me), ("them", opp)):
+        ids, today_ids = base(tid)
+        as_is = [today_ids if d == calendar.today and not ahead else ids for d in days]
+        views[side] = {"as_is": view(tid, as_is, match[side]["score"])}
         doubt = []
         for pid in ids:
             p = players[pid]
@@ -774,30 +838,64 @@ def h2h(league, players, me, calendar, match, plan=None, moves=None, txs=()):
                 doubt.append({"id": pid, "games": len(odds), "odds": round(sum(odds) / len(odds), 2),
                               "at_stake": round((len(odds) - sum(odds)) * p["ros"]["fppg"], 1)})
         doubt.sort(key=lambda r: -r["at_stake"])
-        adds = (league["teams"][str(tid)].get("adds") or {}).get(str(match["period"]), 0)
-        sides[side] = {"lineups": lineups, "carry": carry, "doubt": doubt, "adds": adds, "ids": ids,
-                       "open": [round(len(starting) - lu["starts"], 1) for lu in lineups]}
+        info[side] = {"doubt": doubt, "adds": (league["teams"][str(tid)].get("adds") or {}).get(str(match["period"]), 0),
+                      "ids": ids, "today": today_ids}
 
-    # what the opponent could still add: the best free agent each day an add counts, in place of their
-    # lowest-valued droppable player, on that day's simulated lineup (one add a day)
-    first = calendar.first_tip(calendar.today)
-    add_days = [d for d in days if d > calendar.today or (d == calendar.today and not (first and calendar.now >= first))]
-    them_ids = sides["them"]["ids"]
-    drop = weakest(players, [{"id": x} for x in them_ids])
-    pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
-    threat = []
-    for d in add_days:
-        cands = lambda ids: [(x, players[x]["odds"].get(str(d), 0.0), players[x]["ros"]["fppg"], players[x]["slots"])
-                             for x in ids if players[x]["odds"].get(str(d), 0.0) > 0 and calendar.game_on(players[x]["team"], d)]
-        base, _ = lineup_day(cands(them_ids), starting, str(d))
+    # yours with the week plan, when it covers this matchup
+    planned = None
+    if plan and (plan.get("moves") or plan.get("activate")) and bool(plan.get("next_week")) == bool(ahead) \
+            and [lu["date"] for lu in plan["lineups"]] == [str(d) for d in days]:
+        ids, today_ids = info["me"]["ids"], info["me"]["today"]
+        rosters = []
+        for d in days:
+            for a in plan.get("activate", []):
+                if a["day"] == str(d):
+                    ids, today_ids = swap(ids, a["drop"], a["id"]), swap(today_ids, a["drop"], a["id"])
+            for m in plan["moves"]:
+                if m["day"] == str(d):   # a stash goes to IR, out of the lineup
+                    ids = swap(ids, m["drop"], m["id"] if m["kind"] == "add" else None)
+            rosters.append(today_ids if d == calendar.today else ids)
+        views["me"]["moves"] = view(me, rosters, match["me"]["score"], plan["lineups"])
+        views["me"]["moves"]["activate"] = plan.get("activate", [])
+        planned = views["me"]["moves"]["total"]
+    elif ahead and plan and (plan.get("moves") or plan.get("activate")) and not plan.get("next_week"):
+        ids = info["me"]["ids"]       # next week: your roster once this week's planned moves are made
+        for a in plan.get("activate", []):
+            ids = swap(ids, a["drop"], a["id"])
+        for m in plan["moves"]:
+            ids = swap(ids, m["drop"], m["id"] if m["kind"] == "add" else None)
+        views["me"]["moves"] = view(me, [ids] * len(days), match["me"]["score"])
+        views["me"]["moves"]["activate"] = plan.get("activate", [])
+        views["me"]["moves"]["carried"] = True
+        planned = views["me"]["moves"]["total"]
+
+    # theirs: anyone back from IR activated, then the best free agent each day an add counts, in place
+    # of their lowest-valued droppable player, on that day's simulated lineup
+    ids, act, _ = activated(league, players, opp, info["them"]["ids"])
+    today_ids = info["them"]["today"]
+    for a in act:
+        today_ids = swap(today_ids, a["drop"], a["id"])
+    drop = weakest(players, [{"id": x} for x in ids])
+    threat, rosters = [], []
+    for d in days:
+        here = today_ids if d == calendar.today and not ahead else ids
+        if d not in add_days:
+            rosters.append(here)
+            continue
+        cands = lambda r: [(x, players[x]["odds"].get(str(d), 0.0), players[x]["ros"]["fppg"], players[x]["slots"])
+                           for x in r if players[x]["odds"].get(str(d), 0.0) > 0 and calendar.game_on(players[x]["team"], d)]
+        base_pts, _ = lineup_day(cands(here), starting, str(d))
         best = sorted((p for p in pool if p["odds"].get(str(d))), key=lambda p: -p["odds"][str(d)] * p["ros"]["fppg"])[:H2H_THREAT_POOL]
         top = (None, 0.0)
         for p in best:
-            ids = [x for x in them_ids if x != drop] + [p["id"]]
-            pts, _ = lineup_day(cands(ids), starting, str(d))
-            if pts - base > top[1]:
-                top = (p["id"], pts - base)
+            pts, _ = lineup_day(cands(swap(here, drop, p["id"])), starting, str(d))
+            if pts - base_pts > top[1]:
+                top = (p["id"], pts - base_pts)
         threat.append([str(d), top[0], round(top[1], 1)])
+        rosters.append(swap(here, drop, top[0]) if top[0] else here)
+    views["them"]["moves"] = view(opp, rosters, match["them"]["score"])
+    views["them"]["moves"]["activate"] = act
+    views["them"]["moves"]["streams"] = {t[0]: {"id": t[1], "drop": drop, "gain": t[2]} for t in threat if t[1]}
 
     # their moves: the league feed (judged) and anything newer in the transactions
     since = calendar.now - H2H_MOVES_DAYS * 86400
@@ -814,20 +912,11 @@ def h2h(league, players, me, calendar, match, plan=None, moves=None, txs=()):
                          "gain": None, "per_week": None, "value": None})
     feed.sort(key=lambda f: -f["at"])
 
-    # the margin, with your suggested moves when the week plan covers this matchup
-    me_pts, them_pts = match["me"]["projected"], match["them"]["projected"]
-    planned = None
-    if plan and plan.get("moves") and bool(plan.get("next_week")) == bool(ahead):
-        planned = round(match["me"]["score"] + plan["points"], 1)   # the plan's days: this matchup's days left
-        if [lu["date"] for lu in plan["lineups"]] == [lu["date"] for lu in sides["me"]["lineups"]]:
-            sides["me"]["lineups"] = plan["lineups"]       # your days with the suggested moves made
-            sides["me"]["open"] = [round(len(starting) - lu["starts"], 1) for lu in plan["lineups"]]
-    reach = round(sum(t[2] for t in threat), 1)
-    h = {"lineups": {s: sides[s]["lineups"] for s in sides}, "carry": {s: sides[s]["carry"] for s in sides},
-         "doubt": {s: sides[s]["doubt"] for s in sides}, "adds": {s: sides[s]["adds"] for s in sides},
-         "open": {s: sides[s]["open"] for s in sides}, "threat": threat, "reach": reach,
-         "their_moves": feed, "planned": planned}
-    h["calls"] = h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan if planned is not None else None)
+    reach = round(views["them"]["moves"]["total"] - views["them"]["as_is"]["total"], 1)
+    h = {"views": views, "doubt": {s: info[s]["doubt"] for s in info}, "adds": {s: info[s]["adds"] for s in info},
+         "threat": threat, "reach": reach, "their_moves": feed, "planned": planned}
+    h["calls"] = h2h_calls(players, match, h, calendar, views["me"]["as_is"]["total"], views["them"]["as_is"]["total"],
+                           planned, plan if planned is not None and not views["me"]["moves"].get("carried") else None)
     match["h2h"] = h
     return match
 
@@ -862,20 +951,23 @@ def h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan=None)
                           "why": "Your plan adds him for %s; he is also the most they could gain on %s. A free agent goes to whoever adds first, and taking him also keeps him off their lineup." % (
                               parse_day(m["day"]).strftime("%a"), parse_day(theirs[m["id"]]).strftime("%a"))})
     # thin days: where your lineup has the most empty starts compared with theirs
-    gaps = [(d["date"], h["open"]["me"][i], h["open"]["them"][i]) for i, d in enumerate(h["lineups"]["me"])]
+    mine = h["views"]["me"].get("moves") or h["views"]["me"]["as_is"]
+    gaps = [(d["date"], mine["open"][i], h["views"]["them"]["as_is"]["open"][i]) for i, d in enumerate(mine["lineups"])]
     thin = [g for g in gaps if g[1] - g[2] >= 2]
     if thin:
         lab = ", ".join("%s (%.0f empty vs %.0f)" % (parse_day(d).strftime("%a"), a, b) for d, a, b in thin)
         calls.append({"urgency": "fyi", "title": "Your thin days: %s" % lab,
                       "why": "Expected empty starting slots, you vs them. A streamer with a game on those days fills a start they already have; the week plan aims its adds at them."})
-    crunch = [(d["date"], d["crunch"]) for d in h["lineups"]["me"] if d["crunch"] >= 10]
+    crunch = [(d["date"], d["crunch"]) for d in mine["lineups"] if d["crunch"] >= 10]
     if crunch:
         calls.append({"urgency": "fyi", "title": "Benched points: %s" % ", ".join("%s %.0f" % (parse_day(d).strftime("%a"), c) for d, c in crunch),
                       "why": "More of your players play those days than you have slots. Don't add anyone who only plays then."})
-    if reach >= 10:
+    if reach >= 10 and h["threat"]:
         best = max(h["threat"], key=lambda t: t[2])
-        calls.append({"urgency": "fyi", "title": "Their streaming reach: up to +%d" % reach,
-                      "why": "If they add the best free agent every day an add still counts (they have made %d this week). Their best day: %s, %s (+%d)." % (
+        act = h["views"]["them"].get("moves", {}).get("activate") or []
+        calls.append({"urgency": "fyi", "title": "Their reach with moves: up to +%d" % reach,
+                      "why": "%sIf they add the best free agent every day an add still counts (they have made %d this week). Their best day: %s, %s (+%d)." % (
+                          "".join("%s is back from their IR and counted once activated. " % name(players, x["id"]) for x in act),
                           h["adds"]["them"], parse_day(best[0]).strftime("%a"), name(players, best[1]) if best[1] else "nobody", best[2])})
     for r in h["doubt"]["them"][:2]:
         if r["at_stake"] >= 10:
@@ -991,7 +1083,9 @@ def plan_action(league, players, plan, calendar):
         " (%s)" % clock(first) if first else "")
     if league["acq"].get("per_day"):
         why += " Uses your one add for that day."
-    detail = "%s for that day's lineup%s." % ("%+.0f points" % m["gain"],
+    first_up = "".join("First activate %s from IR%s: ESPN blocks the add until then. " % (
+        name(players, a["id"]), " (drop %s)" % name(players, a["drop"]) if a["drop"] else "") for a in plan.get("activate", []))
+    detail = first_up + "%s for that day's lineup%s." % ("%+.0f points" % m["gain"],
         " (%s expected to start)" % n1(m["starts"]) if m["games"] else "")
     if m["drop"] is None:
         detail += " It fills an open roster spot, so nothing is dropped."

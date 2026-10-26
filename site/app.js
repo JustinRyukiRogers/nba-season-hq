@@ -225,34 +225,48 @@ function h2hWhich() {
   return ok(nxt) ? nxt : null;
 }
 function wkday(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }); }
+// Which view of each side is shown (S.hv): 'as_is' (the roster as it is) or 'moves' (yours: the
+// suggested moves; theirs: anyone back from IR activated plus the best free agent streamed each day).
+function h2hViews(H) {
+  const want = { me: getItem('hq.hv.me') || 'moves', them: getItem('hq.hv.them') || 'as_is' };
+  const pick = side => H.views[side][want[side]] ? want[side] : 'as_is';
+  return { me: pick('me'), them: pick('them') };
+}
 function h2hHero() {
   const m = h2hWhich();
   if (!m) return '';
   const d = S.data, H = m.h2h, opp = team(m.opp), mine = team(me());
+  const which = h2hViews(H), A = H.views.me[which.me], B = H.views.them[which.them];
   const rec = t => t.record ? `${t.record.w}–${t.record.l}${t.record.t ? '–' + t.record.t : ''}` : '';
-  const mePts = H.planned != null ? H.planned : m.me.projected, themPts = m.them.projected;
-  const margin = mePts - themPts, total = Math.max(1, mePts + themPts);
-  const share = 100 * mePts / total;
+  const margin = A.total - B.total, total = Math.max(1, A.total + B.total);
+  const share = 100 * A.total / total;
   const live = !m.ahead && (m.me.score || m.them.score);
   const toggle = d.next_matchup && d.next_matchup.h2h && d.matchup && d.matchup.h2h
     ? `<div class="seg h2h-seg"><button data-hw="this" class="${m.ahead ? '' : 'on'}">This week · ${esc(abbr(d.matchup.opp))}</button>`
       + `<button data-hw="next" class="${m.ahead ? 'on' : ''}">Next week · ${esc(abbr(d.next_matchup.opp))}</button></div>` : '';
-  const side = (cls, t, score, proj, sub) => `<div class="h2h-side ${cls}">
+  const LABEL = { me: ['My lineup', 'Suggested moves'], them: ['Their lineup', 'If they stream'] };
+  const vseg = side => H.views[side].moves
+    ? `<div class="seg vseg ${side}">${['as_is', 'moves'].map((k, i) => `<button data-hv="${side}:${k}" class="${which[side] === k ? 'on' : ''}">${LABEL[side][i]}</button>`).join('')}</div>`
+    : `<div class="vseg-none">${side === 'me' ? 'no suggested moves' : ''}</div>`;
+  const side = (cls, t, score, V) => `<div class="h2h-side ${cls}">
       <div class="h2h-abbr">${esc(t.abbrev)}${cls === 'me' ? ' <span>you</span>' : ''}</div>
       <div class="h2h-name">${esc(t.name)} · ${rec(t)}</div>
-      <div class="h2h-big">${live ? n0(score) : n0(proj)}</div>
-      <div class="h2h-sub">${live ? `projected <b>${n0(proj)}</b>` : 'projected'}${sub}</div></div>`;
-  const meSub = H.planned != null ? ` <span class="muted">(${n0(m.me.projected)} as is)</span>` : '';
+      ${vseg(cls)}
+      <div class="h2h-big">${n0(V.total)}</div>
+      <div class="h2h-sub">${live ? `${n0(score)} so far + ${n0(V.points)} to come` : 'projected'} · <b>${n1(V.starts)}</b> expected starts</div></div>`;
+  const how = `${which.me === 'moves' ? (H.views.me.moves.carried ? 'your roster after this week\'s moves' : 'your suggested moves') : 'your lineup as is'}
+    vs ${which.them === 'moves' ? 'their best streams' : 'theirs as is'}`;
   const head = `<div class="h2h-top"><div class="h2h-kicker">Week ${m.period}${m.playoffs ? ' · playoffs' : ''} · ${esc(dayLabel(m.dates[0]))} – ${esc(dayLabel(m.dates[1]))}</div>${toggle}</div>
-    <div class="h2h-board">${side('me', mine, m.me.score, mePts, meSub)}
+    <div class="h2h-board">${side('me', mine, m.me.score, A)}
       <div class="h2h-mid"><div class="h2h-margin ${margin >= 0 ? 'up' : 'down'}">${margin >= 0 ? 'Up' : 'Down'} ${n0(Math.abs(margin))}</div>
-        <div class="h2h-mcap">${H.planned != null ? 'with your suggested moves' : 'rosters as they stand'}</div></div>
-      ${side('them', opp, m.them.score, themPts, ` · reach +${n0(H.reach)} streaming`)}</div>
-    <div class="h2h-tug" data-tip="Share of the projected points: you ${n0(mePts)}, ${esc(opp.abbrev)} ${n0(themPts)}">
+        <div class="h2h-mcap">${how}</div>
+        <div class="h2h-starts" data-tip="Expected starts over the days left: you ${n1(A.starts)}, ${esc(opp.abbrev)} ${n1(B.starts)}">starts <b class="me">${n1(A.starts)}</b> v <b class="them">${n1(B.starts)}</b></div></div>
+      ${side('them', opp, m.them.score, B)}</div>
+    <div class="h2h-tug" data-tip="Share of the projected points: you ${n0(A.total)}, ${esc(opp.abbrev)} ${n0(B.total)}">
       <i class="me" style="width:${share.toFixed(1)}%"></i><i class="them"></i><b style="left:50%"></b></div>`;
 
   // day strip: mirrored bars, you up in blue, them down in red
-  const days = H.lineups.me.map((a, i) => [a, H.lineups.them[i]]);
+  const days = A.lineups.map((a, i) => [a, B.lineups[i]]);
   if (!S.hd || !days.some(([a]) => a.date === S.hd)) S.hd = days.length ? days[0][0].date : null;
   const top = Math.max(1, ...days.flatMap(([a, b]) => [a.points, b.points]));
   const strip = days.map(([a, b]) => {
@@ -268,12 +282,12 @@ function h2hHero() {
 
   return `<section class="h2h">${head}
     <div class="h2h-days" role="tablist" aria-label="Days">${strip}</div>
-    <div class="h2h-body"><div>${h2hFaceoff(m, days.find(([a]) => a.date === S.hd))}</div>
+    <div class="h2h-body"><div>${h2hFaceoff(m, days.find(([a]) => a.date === S.hd), A, B)}</div>
       <div>${h2hCalls(m)}${h2hMoves(m)}</div></div>
-    ${h2hCarry(m)}</section>`;
+    ${h2hCarry(m, A, B)}</section>`;
 }
 // One day's best lineups, slot by slot: yours on the left, theirs on the right.
-function h2hFaceoff(m, pair) {
+function h2hFaceoff(m, pair, A, B) {
   if (!pair) return '';
   const [a, b] = pair, opp = team(m.opp);
   const game = (pid, date) => {
@@ -297,12 +311,20 @@ function h2hFaceoff(m, pair) {
     const out = lu.bench.map(([pid, prob]) => `<span class="pill" data-pid="${pid}">${esc(P(pid).name)} <span class="muted">${Math.round(prob * 100)}%</span></span>`);
     return out.length ? out.join('') : '<span class="muted small">nobody</span>';
   };
+  // the moves behind each side's view, on this day
+  const notes = [];
+  const first = A.lineups[0] && A.lineups[0].date === a.date;
+  for (const x of (first && A.activate) || []) notes.push(`<div class="fo-note me"><span class="urg now">Activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
+  for (const x of (a.moves || [])) notes.push(`<div class="fo-note me"><span class="urg soon">${x.kind === 'stash' ? 'Stash' : 'Add'}</span> ${pill(x.id)}${x.kind === 'stash' ? ' to IR' : ''} for ${x.drop ? pill(x.drop) : 'the open spot'}</div>`);
+  for (const x of (first && B.activate) || []) notes.push(`<div class="fo-note them"><span class="urg fyi">They activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
+  const st = B.streams && B.streams[a.date];
+  if (st) notes.push(`<div class="fo-note them"><span class="urg fyi">They could add</span> ${pill(st.id)} for ${pill(st.drop)} <span class="muted">+${n0(st.gain)}</span></div>`);
   return `<div class="fo-head"><span class="me">You · ${n0(a.points)} <small>${n1(a.starts)} starts</small></span>
-      <span class="fo-title">${esc(dayLabel(a.date))} · best lineups${m.h2h.planned != null ? ' · yours with the moves' : ''}</span>
+      <span class="fo-title">${esc(dayLabel(a.date))} · best lineups</span>
       <span class="them">${esc(opp.abbrev)} · ${n0(b.points)} <small>${n1(b.starts)} starts</small></span></div>
     <div class="fo">${rows}</div>
+    ${notes.length ? `<div class="fo-notes">${notes.join('')}</div>` : ''}
     <div class="fo-bench"><div><span class="lbl">Your bench with a game</span>${bench(a)}</div><div class="r"><span class="lbl">Theirs</span>${bench(b)}</div></div>
-    ${(a.moves || []).filter(x => x.kind === 'add').map(x => `<div class="small" style="margin-top:6px"><span class="urg soon">Planned</span> add ${pill(x.id)} for ${x.drop ? pill(x.drop) : 'the open spot'}</div>`).join('')}
     <p class="cap" style="margin-top:8px">Points are expected (chance he plays × points a game). Slots pair up by position only; the day is won on the totals.${a.crunch >= 1 ? ` You leave about ${n0(a.crunch)} on your bench this day.` : ''}</p>`;
 }
 // The calls: the matchup's own, after the to-dos that move this matchup's points.
@@ -331,8 +353,8 @@ function h2hMoves(m) {
     ${H.doubt.them.length ? `<div class="h2h-h">Their question marks</div>${H.doubt.them.map(r => `<span class="pill" data-pid="${r.id}">${esc(P(r.id).name)} ${statusChip(P(r.id))} <span class="muted">${r.games}g · ${Math.round(r.odds * 100)}%</span></span>`).join('')}` : ''}`;
 }
 // Who carries each side's week: expected points from starts, ranked, mirrored.
-function h2hCarry(m) {
-  const H = m.h2h, opp = team(m.opp), a = H.carry.me, b = H.carry.them;
+function h2hCarry(m, A, B) {
+  const opp = team(m.opp), a = A.carry, b = B.carry;
   const n = Math.max(a.length, b.length);
   if (!n) return '';
   const top = Math.max(1, ...a.map(r => r[2]), ...b.map(r => r[2]));
@@ -1442,7 +1464,7 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],#lock-now');
+    const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],[data-hv],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
@@ -1453,6 +1475,7 @@ function boot() {
     }
     if (t.dataset.hw) { S.hw = t.dataset.hw; S.hd = null; render(); return; }
     if (t.dataset.hd) { S.hd = t.dataset.hd; render(); return; }
+    if (t.dataset.hv) { const [side, v] = t.dataset.hv.split(':'); setItem('hq.hv.' + side, v); render(); return; }
     if (t.dataset.dismiss != null) { setHidden(t.dataset.dismiss, true); render(); return; }
     if (t.dataset.unhide) { e.preventDefault(); setHidden(null, false); render(); return; }
     if (t.dataset.goto) { e.preventDefault(); go(t.dataset.goto); return; }

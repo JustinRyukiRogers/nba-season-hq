@@ -326,7 +326,8 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     lineup = advice.lineup_check(league, players, me, calendar)
     up = advice.upside_view(players)        # pickups lean to upside (model.UPSIDE_RISK)
     ups = advice.upgrades(league, up, me)
-    stash_list = advice.stash(league, players, me, free_ir)
+    # an IR player who is back gets activated first (the week plan does it), which frees his slot
+    stash_list = advice.stash(league, players, me, free_ir + len(advice.ir_returns(league, players, me)))
     stream_list = advice.streams(league, up, me, calendar, txs)
     hunch_list = advice.hunches(league, up, me, calendar, stream_list)
     on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
