@@ -410,7 +410,7 @@ def _since(stamp, cutoff):
         return False
 
 
-def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
+def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None, wait=False):
     """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
     counting from the day's first tip-off), and the lineup to set each day with the roster you
     will have then. Each day the streaming spot goes to the free agent who adds most to that day's
@@ -420,11 +420,14 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
     every refresh. pick: the players as the adds are chosen on (upside_view); the lineups and points
     use `players`."""
     pick = pick or players
+    asked = stash                 # the loop below uses it up
     days = week_days(calendar)
     if not days or calendar.today > calendar.end:
         return {"days": [], "moves": [], "activate": [], "lineups": [], "points": 0.0, "points_now": 0.0}
     starting = league["starting"]
     can_move = set(move_days(league, calendar, me, txs))
+    if wait:                      # moves start a day later (see the activation check at the end)
+        can_move.discard(min(can_move, default=None))
     next_week = bool(can_move) and min(can_move) > days[-1]
     if next_week:                 # this week is done for moves: plan the next one
         days = sorted(can_move)
@@ -498,6 +501,15 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
         day["moves"] = [m for m in moves if m["day"] == str(d)]
         total += day["points"]
         lineups.append(day)
+    # an activation the first move forces can drop a player before his game that day: try the
+    # plan with its moves a day later too, and keep the better week
+    first = activate and activate[0]["day"] == str(days[0]) and activate[0]["drop"] \
+        and str(days[0]) in players[activate[0]["drop"]]["odds"]
+    if first and not wait:
+        later = week_plan(league, players, me, calendar, txs, asked, pick, wait=True)
+        if later["points"] > total:
+            later["waited"] = {"drop": activate[0]["drop"], "gain": round(later["points"] - total, 1)}
+            return later
     now_pts, _, _ = project_days(ids, days, players, starting, calendar)
     return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "activate": activate,
             "lineups": lineups, "points": round(total, 1),
@@ -1025,6 +1037,17 @@ def actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_l
     deadline ("by", epoch seconds): most urgent first, then the nearest deadline. With a week plan,
     its next add is the stream to-do."""
     acts = list(ir)
+    # the plan says when to activate a player back from IR: the day he is needed, not before
+    for a in (plan or {}).get("activate", []):
+        act = next((x for x in acts if x["kind"] == "ir_blocked" and x["player"] == a["id"]), None)
+        if act and a["day"] and parse_day(a["day"]) > calendar.today:
+            act.update(urgency="soon", by=a["by"],
+                       why="Every add and claim is blocked until he is out of IR, and the plan's next move is %s. "
+                           "Activate him before %s%s." % (
+                               parse_day(a["day"]).strftime("%a"), clock(a["by"]) if a["by"] else "that day",
+                               ", not sooner: %s plays before then" % name(players, a["drop"])
+                               if a["drop"] and any(str(d) in players[a["drop"]]["odds"]
+                                                    for d in week_days(calendar) if d < parse_day(a["day"])) else ""))
     if lineup.get("state") == "season":
         tip = {r["id"]: r["tip"] for r in lineup["rows"] if r["tip"] and not r["locked"]}
         for w in lineup["warnings"]:
