@@ -39,6 +39,12 @@ MINUTES_PRIOR_GAMES = 4.0
 MINUTES_HALF_LIFE = 5.0      # games
 MINUTES_RECENT = 12          # games of minutes looked at
 RATE_PRIOR_MINUTES = 400.0
+# A player whose recent minutes run MINUTES_BUMP or more over the preseason guess (a new role, or
+# covering for a teammate) gets his own minutes trusted twice as fast. Tested on the same four seasons
+# (research/teammate_out_minutes.py, 2026-10-25): next week better in all four, rest of season in three,
+# waiver picks +1.4 points a week each. Whether a teammate is out added nothing; drops keep the slow weight.
+MINUTES_BUMP = 5.0
+MINUTES_BUMP_PRIOR_GAMES = 2.0
 FALLBACK_PRIOR_GAMES = 6.0   # players the board never valued: their own games take over quickly
 DEEP_BENCH = 12.0            # their per-game prior when ESPN does not project them
 FALLBACK_LAST_GAMES = 30.0   # games of last season's average that count as much as DEEP_BENCH
@@ -217,7 +223,8 @@ def minutes_rate(prior_mpg, prior_rate, games, season):
     else:
         return prior_mpg, prior_rate, 0.0
     n = min(MINUTES_RECENT, max(gp, len(recent)))
-    w = n / (n + MINUTES_PRIOR_GAMES)
+    k = MINUTES_BUMP_PRIOR_GAMES if played - prior_mpg >= MINUTES_BUMP else MINUTES_PRIOR_GAMES
+    w = n / (n + k)
     mins = prior_mpg + w * (played - prior_mpg)
     tot_min = gp * season[1] if gp else sum(m for _, m in games)
     tot_pts = gp * season[2] if gp else sum(f for f, _ in games)
