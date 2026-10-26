@@ -187,6 +187,13 @@ def lineup_check(league, players, me, calendar):
 
 # ---------- pickups ----------
 
+def upside_view(players):
+    """The players as the pickup logic sees them: points a game and value at their upside
+    (model.UPSIDE_RISK), so adds, streams and the plan lean to players who could go off."""
+    return {pid: dict(p, ros=dict(p["ros"], fppg=p["ros"]["upside"], value=p["ros"]["value_up"]))
+            for pid, p in players.items()}
+
+
 def free_agents(players, instant_only=False):
     return [p for p in players.values() if p["owner"] == 0
             and (p["fa"] == "FREEAGENT" or (not instant_only and p["fa"] == "WAIVERS"))]
@@ -383,14 +390,16 @@ def _since(stamp, cutoff):
         return False
 
 
-def week_plan(league, players, me, calendar, txs=(), stash=None):
+def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
     """The rest of this matchup week, day by day: the adds worth making and when (one a day, each
     counting from the day's first tip-off), and the lineup to set each day with the roster you
     will have then. Each day the streaming spot goes to the free agent who adds most to that day's
     lineup (STREAM_HORIZON), counting half the season value changed (SPOT_VALUE_SHARE); a real player is dropped only if the gain beats his rest-of-season
     value. stash: {"id", "drop"} of an IR stash to make first; it takes the first day's add, and
     the spot it frees (when ESPN wants a drop for it) is streamed from the next day. Re-planned on
-    every refresh."""
+    every refresh. pick: the players as the adds are chosen on (upside_view); the lineups and points
+    use `players`."""
+    pick = pick or players
     days = week_days(calendar)
     if not days or calendar.today > calendar.end:
         return {"days": [], "moves": [], "lineups": [], "points": 0.0, "points_now": 0.0}
@@ -406,7 +415,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
     held = list(ids)
     used, moves = set(ids), []
     open_spots = open_room(league, ids)
-    spot = stream_spots(players, ids, open_spots)
+    spot = stream_spots(pick, ids, open_spots)
     for i, d in enumerate(days):
         if d not in can_move or len(moves) >= cap:
             continue
@@ -420,8 +429,8 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
             used |= {stash["id"], stash.get("drop")}
             stash = None
             continue
-        pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"] and p["id"] not in used]
-        _, rows = add_options(held, days[i:i + STREAM_HORIZON], pool, players, starting, calendar, spot, open_spots)
+        pool = [p for p in free_agents(pick, instant_only=True) if not p["ros"]["out"] and p["id"] not in used]
+        _, rows = add_options(held, days[i:i + STREAM_HORIZON], pool, pick, starting, calendar, spot, open_spots)
         row = next((r for r in rows if r["ok"]), None)
         if not row:
             continue
@@ -450,7 +459,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None):
     return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "lineups": lineups, "points": round(total, 1),
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
             "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
-            "spot": sorted(stream_spots(players, ids, open_room(league, ids))), "open": open_room(league, ids)}
+            "spot": sorted(stream_spots(pick, ids, open_room(league, ids))), "open": open_room(league, ids)}
 
 
 def day_lineup(ids, day, players, starting, calendar, slots_now):
@@ -871,11 +880,11 @@ def upgrade_action(players, ups, waivers):
         why.append("First come, first served, but no rush elsewhere (%+.1f%% owned today)." % p["own_chg"])
     if ups.get("open"):
         return {"kind": "upgrade", "urgency": "now" if hot else "soon", "by": claim, "player": u["id"], "drop": None,
-                "title": "Upgrade: add %s into your open spot (+%.0f value)" % (p["name"], u["gain"]),
+                "title": "Upgrade: add %s into your open spot (+%.0f upside value)" % (p["name"], u["gain"]),
                 "detail": "No drop needed. %s then becomes your streaming spot, so the gain is counted over him." % name(players, ups["drop"]),
                 "why": " ".join(why)}
     return {"kind": "upgrade", "urgency": "now" if hot else "soon", "by": claim, "player": u["id"], "drop": ups["drop"],
-            "title": "Upgrade: %s over %s (+%.0f value)" % (p["name"], name(players, ups["drop"]), u["gain"]),
+            "title": "Upgrade: %s over %s (+%.0f upside value)" % (p["name"], name(players, ups["drop"]), u["gain"]),
             "why": " ".join(why)}
 
 

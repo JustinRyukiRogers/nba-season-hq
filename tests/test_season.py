@@ -484,6 +484,20 @@ def test_upgrades_skip_streaming_spot():
     assert ups["drop"] == 2 and not ups["list"], "a free agent worth less than your weakest kept player is no upgrade: %s" % ups
 
 
+def test_ceiling_and_upside():
+    assert abs(model.ceiling(20.0, []) - 20.0 * (1 + 2.9 / 20 ** 0.5)) < 1e-9, "no games: the typical shape"
+    steady, spiky = model.ceiling(20.0, [20.0] * 10), model.ceiling(20.0, [5.0, 35.0] * 5)
+    assert steady < model.ceiling(20.0, []) < spiky, (steady, spiky)
+    flat = {"fppg": 20.0, "role": 20.0, "ceiling": model.ceiling(20.0, [])}
+    assert abs(model.upside(flat) - 20.0) < 1e-9, "same role, typical spread: no tilt"
+    grown = dict(flat, role=26.0)
+    assert abs(model.upside(grown) - (20.0 + model.UPSIDE_RISK * 6.0)) < 1e-9, "half the role gain"
+    p = player(1)
+    p["ros"].update(fppg=20.0, upside=23.0, value=100.0, value_up=140.0)
+    v = advice.upside_view({1: p})[1]["ros"]
+    assert (v["fppg"], v["value"]) == (23.0, 140.0) and p["ros"]["fppg"] == 20.0, "the view leaves the real numbers alone"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

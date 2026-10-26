@@ -52,6 +52,19 @@ FULL_SEASON = 82
 OUT_TAGS = {"OUT", "SUSPENSION", "INJURY_RESERVE"}
 CAL_FLAGS = ("old", "young", "new_team", "inj_return", "rookie")
 LINEUP_SAMPLES = 200         # simulated days of who-plays when more players have games than slots
+# Ceiling: his big night, the 90th-percentile game. Across 2023-26 that is 1 + 2.9/sqrt(points a game)
+# times his average for a typical player (1.68x at 20 a game, 1.41x at 45), and a player's own spread
+# carries over (first third of a season against the rest: correlation 0.5, own spread best at half
+# weight after ~25 games), so his own is blended in by games played (scratchpad test, 2026-10-25).
+CEIL_SHAPE = 2.9
+CEIL_PRIOR_GAMES = 20.0
+ROLE_GAMES = 3               # his last few games' minutes: the role he has right now
+# Risk appetite for pickups (the user, 2026-10-25: "I'd rather get someone that could drop 50 rather
+# than someone who's guaranteed 15"). Adds, streams and the week plan pick on
+#     fppg + UPSIDE_RISK x (upside - fppg),  upside = points a game at his last games' minutes (when
+#     more than expected), scaled by how much spikier his games are than typical for that average
+# A preference, not a better forecast: it gives up some expected points for upside. 0 turns it off.
+UPSIDE_RISK = 0.5
 
 
 def et_date(epoch_s):
@@ -163,6 +176,31 @@ def blend(prior, sigma, gp, actual, k):
         w = gp / (gp + k)
         return prior + w * (actual - prior), sigma * math.sqrt(k / (k + gp))
     return prior, sigma
+
+
+def typical_ceiling(fppg):
+    """The 90th-percentile game over the average, for a typical player at this average."""
+    return 1 + CEIL_SHAPE / math.sqrt(max(fppg, 5.0))
+
+
+def ceiling(fppg, points):
+    """His 90th-percentile game: the typical shape at his average, blended with his own games'."""
+    ratio = typical_ceiling(fppg)
+    if len(points) >= 2 and sum(points) > 0:
+        xs = sorted(points)
+        i = 0.9 * (len(xs) - 1)
+        lo = int(i)
+        own = (xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (i - lo)) / (sum(xs) / len(xs))
+        ratio += len(xs) / (len(xs) + CEIL_PRIOR_GAMES) * (own - ratio)
+    return fppg * ratio
+
+
+def upside(r):
+    """Points a game the pickup logic values him at under UPSIDE_RISK (see the constant)."""
+    if r["fppg"] <= 0:
+        return r["fppg"]
+    up = r["role"] * (r["ceiling"] / r["fppg"]) / typical_ceiling(r["fppg"])
+    return r["fppg"] + UPSIDE_RISK * (up - r["fppg"])
 
 
 def minutes_rate(prior_mpg, prior_rate, games, season):
@@ -278,6 +316,10 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
         mins, rate, own_weight = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season)
         fppg = mins * rate
     fppg += note.get("fppg_delta") or 0.0
+    role = fppg
+    recent = [m for _, m in (games_played or []) if m > 0][-ROLE_GAMES:]
+    if mins and rate and recent and sum(recent) / len(recent) > mins:
+        role = fppg + rate * (sum(recent) / len(recent) - mins)
 
     games = calendar.remaining(p["team"]) if p["team"] in calendar.by_team else []
     out, back, over = absence(p, injuries.get(p["id"]), note, calendar.today, calendar.end)
@@ -321,7 +363,9 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
                 "games": round(played, 1), "playoff_games": round(playoff, 1), "team_games": len(games) + extra,
                 "absent": round(absent, 1), "share": round(weighted / team_w, 3) if team_w else 0.0,
                 "_team_w": team_w, "out": out, "back": str(back) if out and back else None, "season_over": over,
-                "points": round(played * fppg)}
+                "points": round(played * fppg),
+                "ceiling": round(ceiling(fppg, [f for f, m in (games_played or []) if m > 0]), 1), "role": round(role, 2)}
+    p["ros"]["upside"] = round(upside(p["ros"]), 2)
     return p
 
 
@@ -331,10 +375,11 @@ def finish_values(players, replacement):
         r = p["ros"]
         team_w = r.pop("_team_w")
         if team_w <= 0 or r["share"] < 0.05:
-            r["value"], r["bar"] = 0.0, None
+            r["value"], r["bar"], r["value_up"] = 0.0, None, 0.0
             continue
         value, bar = player_value(r["fppg"], r["sigma"], r["share"], team_w, replacement)
         r["value"], r["bar"] = round(value, 1), round(bar, 1)
+        r["value_up"] = round(player_value(r["upside"], r["sigma"], r["share"], team_w, replacement)[0], 1)
 
 
 def replacement_level(free_agents):

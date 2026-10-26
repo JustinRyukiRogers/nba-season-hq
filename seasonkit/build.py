@@ -324,10 +324,11 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     # moves
     ir, free_ir = advice.ir_actions(league, players, me)
     lineup = advice.lineup_check(league, players, me, calendar)
-    ups = advice.upgrades(league, players, me)
+    up = advice.upside_view(players)        # pickups lean to upside (model.UPSIDE_RISK)
+    ups = advice.upgrades(league, up, me)
     stash_list = advice.stash(league, players, me, free_ir)
-    stream_list = advice.streams(league, players, me, calendar, txs)
-    hunch_list = advice.hunches(league, players, me, calendar, stream_list)
+    stream_list = advice.streams(league, up, me, calendar, txs)
+    hunch_list = advice.hunches(league, up, me, calendar, stream_list)
     on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
     clears = min((p["waiver_until"] for p in on_waivers if p["waiver_until"]), default=None)
     waivers = {"all_on_waivers": bool(fas) and len(on_waivers) == len(fas), "clears": clears,
@@ -338,7 +339,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     pending = (advice.stash_action(league, players, me, stash_list, waivers, calendar)
                if stash_list["free_ir"] > 0 and stash_list["list"] else None)
     reserve = {"id": pending["player"], "drop": pending["drop"]} if pending and pending["urgency"] in ("now", "soon") else None
-    plan = advice.week_plan(league, players, me, calendar, txs, reserve)
+    plan = advice.week_plan(league, players, me, calendar, txs, reserve, pick=up)
     trades = advice.trade_ideas(league, players, me, calendar)
     try:
         league_moves = advice.league_moves(league, players, me, calendar, pull.league_moves(cookies))
@@ -392,7 +393,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
                      "weeks": [[str(a), str(b)] for a, b in calendar.weeks], "regular": calendar.regular,
                      "week": calendar.current_week()},
         "replacement": round(replacement, 2),
-        "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "priors_from": priors.get("board_generated")},
+        "model": {"prior_games": model.PRIOR_GAMES, "dtd_play": model.DTD_PLAY, "upside_risk": model.UPSIDE_RISK, "priors_from": priors.get("board_generated")},
         "players": {str(pid): page_player(p, calendar) for pid, p in players.items()},
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),

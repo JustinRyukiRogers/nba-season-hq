@@ -355,3 +355,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .take-sum summary::-webkit-details-marker { display: none; }
 .take-sum summary::before { content: "▸ "; color: var(--muted); }
 .take-sum[open] summary::before { content: "▾ "; }
+
+/* dashboard: league moves list */
+.mv { padding: 6px 0; border-top: 1px solid var(--line); }
+.mv:first-of-type { border-top: 0; }
+.mv .who { margin-top: 4px; }
+.mv.mine .small b { color: var(--accent, inherit); }
