@@ -290,6 +290,9 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     priors = read_json(DATA / "priors.json", {"players": {}})
     cal_fit = priors.get("calibration") or calibrate.load()
     notes = load_notes(players)
+    for pid, n in notes.items():
+        if n.get("skip"):
+            players[pid]["skip"] = True
     tip = {g["id"]: g["tip"] for g in games}
     for p in players.values():
         mine = (log["players"].get(str(p["id"])) or {})
