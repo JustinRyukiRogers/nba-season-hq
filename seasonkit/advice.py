@@ -445,11 +445,19 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
 
     lineups, total, rosters = [], 0.0, list(ids)
     locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False, today=True)}
+    today_ids = [pid for pid in locked if pid in players]
+    # the same days with the roster as it is now, no adds: what you get if you make no move
+    as_is, as_is_total = [], 0.0
+    for d in days:
+        day = day_lineup(today_ids if d == calendar.today else ids, d, players, starting, calendar,
+                         locked if d == calendar.today else {})
+        day["moves"] = []
+        as_is_total += day["points"]
+        as_is.append(day)
     for d in days:
         for m in moves:
             if m["day"] == str(d):   # a stash goes to IR, out of the lineup
                 rosters = [pid for pid in rosters if pid != m["drop"]] + ([m["id"]] if m["kind"] == "add" else [])
-        today_ids = [pid for pid in locked if pid in players]
         day = day_lineup(today_ids if d == calendar.today else rosters, d, players, starting, calendar,
                          locked if d == calendar.today else {})
         day["moves"] = [m for m in moves if m["day"] == str(d)]
@@ -457,6 +465,7 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None):
         lineups.append(day)
     now_pts, _, _ = project_days(ids, days, players, starting, calendar)
     return {"days": [str(d) for d in days], "next_week": next_week, "moves": moves, "lineups": lineups, "points": round(total, 1),
+            "as_is": {"lineups": as_is, "points": round(as_is_total, 1)},
             "points_now": round(now_pts, 1), "move_days": sorted(str(d) for d in can_move),
             "preseason_add": calendar.today < calendar.start and bool(acq.get("per_day")),
             "spot": sorted(stream_spots(pick, ids, open_room(league, ids))), "open": open_room(league, ids)}
@@ -494,8 +503,10 @@ def day_lineup(ids, day, players, starting, calendar, slots_now):
     chosen = set(owner.values())
     bench = sorted(([c[0], round(c[1], 2), round(starts.get(c[0], 0.0), 2), c[4]["tip"]] for c in cands if c[0] not in chosen),
                    key=lambda b: -b[1])
+    # points lost to the slots: what every player who plays would score if each could start, less the lineup's
+    crunch = max(0.0, sum(c[1] * c[2] for c in cands) - pts)
     return {"date": str(day), "first_tip": calendar.first_tip(day), "points": round(pts, 1), "slots": rows,
-            "bench": bench, "idle": idle, "games": len(cands) + len(locked),
+            "bench": bench, "idle": idle, "games": len(cands) + len(locked), "crunch": round(crunch, 1),
             "starts": round(sum(starts.values()) + len(locked), 1)}
 
 

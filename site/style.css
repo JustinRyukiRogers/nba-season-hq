@@ -361,3 +361,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mv:first-of-type { border-top: 0; }
 .mv .who { margin-top: 4px; }
 .mv.mine .small b { color: var(--accent, inherit); }
+
+/* next day's lineup on the dashboard */
+.seg.lu { margin: 2px 0 8px; }
+.lu-row { display: grid; grid-template-columns: 44px minmax(120px, 1fr) auto 48px; gap: 8px; align-items: center; padding: 4px 0;
+  border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.lu-row:first-child { border-top: 0; }
+.lu-row .r { text-align: right; font-variant-numeric: tabular-nums; }
+.lu-row.out { color: var(--muted); }
+.lu-row.out .chip.slot { border-style: dashed; }

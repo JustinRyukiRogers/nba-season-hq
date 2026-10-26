@@ -3,7 +3,7 @@
 // tabs. Plain DOM, no framework. Everything shown comes from ESPN via seasonkit/build.py.
 
 const S = {
-  data: null, key: null, tab: 'home', wtab: 'adds', rtab: 'values', ttab: 'ideas', ptab: 'adds', ltab: 'standings', mkind: 'all', pos: '', instant: false, q: '', who: 'all',
+  data: null, key: null, tab: 'home', wtab: 'adds', rtab: 'values', ttab: 'ideas', ptab: 'adds', lu: 'mine', ltab: 'standings', mkind: 'all', pos: '', instant: false, q: '', who: 'all',
   prev: null, changes: [],
   st: { range: 'week', who: 'mine', per: 'game', view: 'min', onTeam: true, sort: 'fp', dir: -1, from: '', to: '' },
 };
@@ -210,7 +210,7 @@ function viewDashboard() {
     for (const t of takes) left.push(`<details class="card take-sum"><summary><span class="tk ${t.stance}">${STANCE[t.stance]}</span> <b>${esc(t.on || P(t.pids[0]).name)}</b>
       <span class="muted small">until ${esc(dayShort(t.until))}</span></summary><div class="who" style="margin-top:8px">${t.pids.map(id => pill(id)).join(' ')}</div>${takeBlock(t)}</details>`);
   }
-  right.push(matchupPanel(), movesPanel(), weekPanel(), vsPanel(), standingsPanel());
+  right.push(nextDayPanel(), matchupPanel(), weekPanel(), movesPanel(), vsPanel(), standingsPanel());
   return top.join('') + `<div class="dash"><div>${left.join('')}</div><div>${right.join('')}</div></div>`;
 }
 
@@ -255,17 +255,60 @@ function matchupPanel() {
     <p class="cap">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}. ${esc(opp.name)}. Expected starts left: ${n0(m.me.starts)} for you, ${n0(m.them.starts)} for them.</p>
     ${Charts.race([{ label: abbr(me()) + ' (you)', done: m.me.score, rest: m.me.remaining, cls: 'mine' }, { label: opp.abbrev, done: m.them.score, rest: m.them.remaining }])}</div>`;
 }
+// The week's lineups as your roster stands (S.lu 'mine') or with the suggested adds ('plan').
+function weekLineups(W) {
+  const mine = S.lu !== 'plan' && W.as_is;
+  return mine ? { lineups: W.as_is.lineups, points: W.as_is.points, mine: true } : { lineups: W.lineups, points: W.points, mine: false };
+}
+function luToggle(W) {
+  if (!W.as_is || !W.moves.length) return '';
+  return `<div class="seg small lu">${[['mine', 'My lineup'], ['plan', 'With suggested moves']].map(([k, l]) =>
+    `<button data-lu="${k}" class="${(S.lu === 'plan') === (k === 'plan') ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+}
+function luCaption(W) {
+  const V = weekLineups(W);
+  if (!W.as_is || !W.moves.length) return `Expected points from your best daily lineups: ${n0(V.points)} in all.`;
+  const gain = W.points - W.as_is.points;
+  return V.mine
+    ? `Your roster as it is now, best lineup each day: ${n0(V.points)} expected points. The suggested moves would make it ${n0(W.points)} (${signed(gain)}).`
+    : `With the suggested adds (${W.moves.map(m => esc(P(m.id).name)).join(', ')}): ${n0(V.points)} expected points, ${signed(gain)} over your roster as it is.`;
+}
 function dayCols(W) {
-  return Charts.columns(W.lineups.map(x => ({
+  return Charts.columns(weekLineups(W).lineups.map(x => ({
     label: isoDate(x.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), sub: plural(x.games, 'game'), value: x.points,
-    tip: `${dayLabel(x.date)}: ${n0(x.points)} expected points, ${n1(x.starts)} expected starts of ${x.games} games${x.moves.length ? ' · add ' + x.moves.map(m => P(m.id).name).join(', ') : ''}`,
+    tip: `${dayLabel(x.date)}: ${n0(x.points)} expected points, ${n1(x.starts)} expected starts of ${x.games} games`
+      + (x.crunch >= 1 ? ` · ${n0(x.crunch)} lost to full slots${x.bench.length ? ' (left out: ' + x.bench.map(b => P(b[0]).name).join(', ') + ')' : ''}` : '')
+      + (x.moves.length ? ' · add ' + x.moves.map(m => P(m.id).name).join(', ') : ''),
   })));
 }
 function weekPanel() {
   const W = S.data.plan;
   if (!W || !W.lineups || !W.lineups.length) return '';
   return `<div class="panel"><h3>${W.next_week ? 'Next week, day by day' : 'Rest of the week, day by day'} <a href="#" data-goto="week">Plan →</a></h3>
-    <p class="cap">Expected points from your best daily lineups${W.moves.length ? ', with the planned adds' : ''}: ${n0(W.points)} in all.</p>${dayCols(W)}</div>`;
+    ${luToggle(W)}<p class="cap">${luCaption(W)}</p>${dayCols(W)}</div>`;
+}
+// The next day's lineup: who starts where, who is left out with a game, and what the full slots cost.
+function nextDayPanel() {
+  const W = S.data.plan;
+  if (!W || !W.lineups || !W.lineups.length) return '';
+  const V = weekLineups(W), today = S.data.calendar.today;
+  const day = V.lineups.find(x => x.date > today) || V.lineups[0];
+  const filled = day.slots.filter(r => r[1]), empty = day.slots.length - filled.length;
+  const slotRows = filled.map(([slot, id, prob, pts, locked]) => `<div class="lu-row" data-pid="${id}"><span class="chip slot">${esc(slot)}</span>
+    <span class="nm">${esc(P(id).name)} ${statusChip(P(id))}</span><span class="muted small">${esc(gameOn(P(id), day.date))}</span><span class="r">${locked ? 'locked' : n1(pts)}</span></div>`).join('');
+  const out = day.bench.filter(b => b[1] > 0).map(([id, prob, start]) => `<div class="lu-row out" data-pid="${id}"><span class="chip slot">OUT</span>
+    <span class="nm">${esc(P(id).name)}</span><span class="muted small">${esc(gameOn(P(id), day.date))} · starts only if a starter sits (${Math.round(100 * start)}%)</span>
+    <span class="r">${n1(prob * P(id).ros.fppg)}</span></div>`).join('');
+  const moves = day.moves.map(m => `add ${esc(P(m.id).name)}${m.drop ? ' for ' + esc(P(m.drop).name) : ''}`).join(', ');
+  const verdict = day.bench.length
+    ? `<b>${plural(day.games, 'player')} with a game for ${day.slots.length} slots</b>${empty ? `, and ${plural(empty, 'slot')} can't be filled by position` : ''}.
+       Leave out ${day.bench.map(b => esc(P(b[0]).name)).join(', ')}: the lowest expected points among those who can't fit.
+       The full slots cost about <b>${n0(day.crunch)}</b> points (less than his full projection, since he still fills in if a starter sits).`
+    : `Everyone with a game fits in the lineup${empty ? ` (${plural(empty, 'slot')} empty: not enough games)` : ''}.`;
+  return `<div class="panel"><h3>${esc(dayLabel(day.date))}: ${V.mine ? 'your lineup' : 'with suggested moves'} <a href="#" data-goto="week">Every day →</a></h3>
+    ${luToggle(W)}<p class="cap">${verdict}${moves ? ` With the suggested moves (${moves}): ${n0(W.lineups.find(x => x.date === day.date).points)} points against ${n0(W.as_is.lineups.find(x => x.date === day.date).points)} as is.` : ''}</p>
+    <div class="lu">${slotRows}${out}</div>
+    <p class="small muted" style="margin-top:6px">${n0(day.points)} expected points. ${day.idle.length ? 'No game: ' + day.idle.map(id => esc(P(id).name)).join(', ').replace(/\.?$/, '.') : ''}</p></div>`;
 }
 function vsRows(limit) {
   const R = S.data.team_report;
@@ -322,7 +365,7 @@ function viewWeekPage() {
   if (W && W.next_week) out.push(`<div class="banner small">This matchup week is done for adds (rosters lock at the day's first tip), so this plans <b>next week</b>.
     Today's lineup is below; anything you add now counts from ${esc(dayLabel(W.days[0]))}.</div>`);
   if (W && W.lineups && W.lineups.length) out.push(`<div class="panel"><h3>${W.next_week ? 'Next week' : 'Rest of the week'}: expected points a day</h3>
-    <p class="cap">Your best daily lineups with the planned adds. Each day's lineup is listed below.</p>${dayCols(W)}</div>`);
+    ${luToggle(W)}<p class="cap">${luCaption(W)} Each day's lineup is listed below.</p>${dayCols(W)}</div>`);
   out.push(matchupPanel(), lineupCard(), viewWeek());
   return out.join('');
 }
@@ -504,7 +547,9 @@ function viewWeek() {
     above has to be made before that day's first tip. Re-planned on every refresh.
     ${W.preseason_add ? 'ESPN may count the days before the opener as one day for the one-add limit, so an add made before the opener can use up opening day\'s.' : ''}</p>`);
 
-  for (const day of W.lineups) {
+  const V = weekLineups(W);
+  out.push(`<h2>Day by day: ${V.mine ? 'your roster as it is' : 'with the suggested adds'}</h2>${luToggle(W)}`);
+  for (const day of V.lineups) {
     const moves = day.moves.map(m => `<div class="small"><b>Before ${esc(day.first_tip ? timeLabel(day.first_tip) : 'the first game')}:</b> add ${esc(P(m.id).name)}${
       m.kind === 'stash' ? ' and move him to IR' + (m.drop ? `, dropping ${esc(P(m.drop).name)}` : '') : m.drop ? ', drop ' + esc(P(m.drop).name) : ' into the open spot'}</div>`).join('');
     const filled = day.slots.filter(r => r[1]);
@@ -522,9 +567,9 @@ function viewWeek() {
     const idle = day.idle.map(id => esc(P(id).name)).join(', ');
     out.push(`<h2>${esc(dayLabel(day.date))} <span class="sub">${plural(day.games, 'game')} · ${n0(day.points)} expected points${day.date === d.calendar.today ? ' · today' : ''}</span></h2>
       ${moves}<div class="rows">${rows}${bench}</div>
-      <p class="small muted">${empty ? `${plural(empty, 'slot')} empty. ` : ''}${idle ? 'No game: ' + idle + '.' : ''}</p>`);
+      <p class="small muted">${empty ? `${plural(empty, 'slot')} empty (no one eligible). ` : ''}${day.crunch >= 1 ? `Full slots cost about ${n0(day.crunch)} points. ` : ''}${idle ? 'No game: ' + idle.replace(/\.?$/, '.') : ''}</p>`);
   }
-  out.push(`<p class="small muted">Each day's lineup is the best on expected points with the roster you will have that day, adds included.
+  out.push(`<p class="small muted">Each day's lineup is the best on expected points with ${V.mine ? 'your roster as it is now' : 'the roster you will have that day, adds included'}.
     <b>Plays</b>: his chance of playing. <b>Starts</b>, for bench players: how often he gets into the lineup when you swap in for a starter who sits.
     Expected points simulate who plays, so they allow for those swaps.</p>`);
   return out.join('');
@@ -1223,6 +1268,7 @@ function boot() {
   S.ltab = getItem('hq.ltab') || 'standings';
   Charts.install();
   S.ttab = getItem('hq.ttab') || 'ideas';
+  S.lu = getItem('hq.lu') === 'plan' ? 'plan' : 'mine';
   Object.assign(S.st, getJSON('hq.stats') || {});
 
   $('#tabs').addEventListener('click', e => {
@@ -1235,7 +1281,7 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-sub],[data-wtab],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
@@ -1249,6 +1295,7 @@ function boot() {
     if (t.dataset.goto) { e.preventDefault(); go(t.dataset.goto); return; }
     if (t.id === 'lock-now') { e.preventDefault(); setItem('hq.key', null); S.key = null; showLock(''); return; }
     if (t.dataset.wtab != null) { S.wtab = t.dataset.wtab; render(); return; }
+    if (t.dataset.lu != null) { S.lu = t.dataset.lu; setItem('hq.lu', S.lu); render(); return; }
     if (t.dataset.rtab != null) { S.rtab = t.dataset.rtab; setItem('hq.rtab', S.rtab); render(); return; }
     if (t.dataset.sub) { const [k, v] = t.dataset.sub.split(':'); S[k] = v; setItem('hq.' + k, v); render(); return; }
     if (t.dataset.mkind != null) { S.mkind = t.dataset.mkind; render(); return; }
