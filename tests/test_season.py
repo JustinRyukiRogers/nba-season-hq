@@ -452,8 +452,8 @@ def test_h2h_calls():
     players = {1: {"name": "A", "ros": {"fppg": 30.0}}, 2: {"name": "B", "ros": {"fppg": 20.0}}}
     lu = lambda date, starts, crunch=0.0: {"date": date, "starts": starts, "crunch": crunch}
     h = {"reach": 20.0, "threat": [["2026-10-27", 2, 20.0]], "adds": {"me": 0, "them": 1},
-         "views": {"me": {"as_is": {"open": [1.0, 6.0], "lineups": [lu("2026-10-26", 9.0), lu("2026-10-27", 4.0, 12.0)]}},
-                   "them": {"as_is": {"open": [1.0, 2.0]}}},
+         "views": {"me": {"as_is": {"open": [1.0, 6.0], "form": 1000.0, "lineups": [lu("2026-10-26", 9.0), lu("2026-10-27", 4.0, 12.0)]}},
+                   "them": {"as_is": {"open": [1.0, 2.0], "form": 1000.0}}},
          "doubt": {"them": [{"id": 1, "games": 3, "odds": 0.5, "at_stake": 45.0}]}}
     cal = types.SimpleNamespace(now=0)
     plan = {"moves": [{"kind": "add", "id": 2, "day": "2026-10-27", "by": 3600}]}
@@ -470,6 +470,9 @@ def test_h2h_calls():
     assert far[0]["title"].startswith("Comfortable")                         # +300 beats band 100 + reach 20
     behind = advice.h2h_calls(players, {"ahead": 1}, h, cal, 800.0, 1000.0, None)
     assert behind[0]["title"].startswith("Long shot")
+    h["views"]["me"]["as_is"]["form"] = 850.0                                   # even on projections, far behind on form
+    slow = advice.h2h_calls(players, {"ahead": 0}, h, cal, 1000.0, 1000.0, None)
+    assert slow[0]["title"].startswith("Underdog on current form") and slow[0]["urgency"] == "optional"
 
 
 def test_hunches():

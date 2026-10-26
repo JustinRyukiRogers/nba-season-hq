@@ -515,3 +515,5 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .fo-note.them { grid-column: 2; text-align: right; }
 .fo-note .urg { margin-right: 4px; }
 @media (max-width: 759px) { .fo-notes { grid-template-columns: 1fr; } .fo-note.them { grid-column: 1; text-align: left; } }
+.h2h-form { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.h2h-form b { color: var(--ink-2); }

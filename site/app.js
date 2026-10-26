@@ -253,13 +253,15 @@ function h2hHero() {
       <div class="h2h-name">${esc(t.name)} · ${rec(t)}</div>
       ${vseg(cls)}
       <div class="h2h-big">${n0(V.total)}</div>
-      <div class="h2h-sub">${live ? `${n0(score)} so far + ${n0(V.points)} to come` : 'projected'} · <b>${n1(V.starts)}</b> expected starts</div></div>`;
+      <div class="h2h-sub">${live ? `${n0(score)} so far + ${n0(V.points)} to come` : 'projected'} · <b>${n1(V.starts)}</b> expected starts</div>
+      <div class="h2h-form" data-tip="The same expected starts at each player's points a game so far this season (2-3 games each: noisy). The projections blend that with preseason numbers.">at this season's pace <b>${n0(V.form)}</b></div></div>`;
   const how = `${which.me === 'moves' ? (H.views.me.moves.carried ? 'your roster after this week\'s moves' : 'your suggested moves') : 'your lineup as is'}
     vs ${which.them === 'moves' ? 'their best streams' : 'theirs as is'}`;
   const head = `<div class="h2h-top"><div class="h2h-kicker">Week ${m.period}${m.playoffs ? ' · playoffs' : ''} · ${esc(dayLabel(m.dates[0]))} – ${esc(dayLabel(m.dates[1]))}</div>${toggle}</div>
     <div class="h2h-board">${side('me', mine, m.me.score, A)}
       <div class="h2h-mid"><div class="h2h-margin ${margin >= 0 ? 'up' : 'down'}">${margin >= 0 ? 'Up' : 'Down'} ${n0(Math.abs(margin))}</div>
         <div class="h2h-mcap">${how}</div>
+        <div class="h2h-mcap">${(A.form - B.form) >= 0 ? 'up' : 'down'} ${n0(Math.abs(A.form - B.form))} at this season's pace</div>
         <div class="h2h-starts" data-tip="Expected starts over the days left: you ${n1(A.starts)}, ${esc(opp.abbrev)} ${n1(B.starts)}">starts <b class="me">${n1(A.starts)}</b> v <b class="them">${n1(B.starts)}</b></div></div>
       ${side('them', opp, m.them.score, B)}</div>
     <div class="h2h-tug" data-tip="Share of the projected points: you ${n0(A.total)}, ${esc(opp.abbrev)} ${n0(B.total)}">

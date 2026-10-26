@@ -813,7 +813,11 @@ def h2h(league, players, me, calendar, match, plan=None, moves=None, txs=()):
                 by[pid][2] += 1
         carry = sorted(([pid, round(st, 1), round(pts, 1), g] for pid, (st, pts, g) in by.items()), key=lambda r: -r[2])
         pts = sum(lu["points"] for lu in lineups)
+        # a second read: the same expected starts at each player's points a game so far this season
+        form = sum(st * (players[pid]["stats"]["season"][2] if (players[pid]["stats"].get("season") or [0])[0]
+                         else players[pid]["ros"]["fppg"]) for pid, (st, _, _) in by.items())
         return {"lineups": lineups, "carry": carry, "points": round(pts, 1), "total": round((score or 0.0) + pts, 1),
+                "form": round((score or 0.0) + form, 1),
                 "starts": round(sum(lu["starts"] for lu in lineups), 1),
                 "open": [round(len(starting) - lu["starts"], 1) for lu in lineups]}
 
@@ -942,6 +946,16 @@ def h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan=None)
         calls.append({"urgency": "soon", "title": "Toss-up: every start counts %s" % days_word,
                       "why": "The margin %s is %+d, inside the toss-up band (±%d) once their streaming (up to %d) is counted. "
                              "Make each planned add before its tip-off and recheck injury news before each lock." % (what, margin, band, reach)})
+    # the same rosters at this season's points a game so far: a slow start the projections still discount
+    mine_v = h["views"]["me"].get("moves") or h["views"]["me"]["as_is"]
+    form = mine_v["form"] - h["views"]["them"]["as_is"]["form"]
+    if form < -band and calls[0]["title"].split(":")[0] != "Long shot":
+        costly = [m for m in (plan or {}).get("moves", []) if m["kind"] == "add" and m.get("ros_cost", 0) > -1]
+        calls[0] = {"urgency": "optional", "title": "Underdog on current form: don't spend season value on this week",
+                    "why": "The projections call it %+d, but at this season's points a game so far it is %+d (you %d, them %d). "
+                           "That is 2-3 games a player, noisy, yet it is how this week has looked. Make the moves that hold value over the season%s." % (
+                               margin, form, mine_v["form"], h["views"]["them"]["as_is"]["form"],
+                               "; skip %s, which only gains this week" % ", ".join("%s %s" % (parse_day(m["day"]).strftime("%a"), name(players, m["id"])) for m in costly) if costly else "")}
     # a planned add who is also their best stream: free agents go to whoever adds first
     theirs = {t[1]: t[0] for t in h["threat"] if t[1] and t[2] >= 5}
     for m in (plan or {}).get("moves", []):
