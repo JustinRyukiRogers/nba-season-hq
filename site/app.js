@@ -210,7 +210,7 @@ function viewDashboard() {
     for (const t of takes) left.push(`<details class="card take-sum"><summary><span class="tk ${t.stance}">${STANCE[t.stance]}</span> <b>${esc(t.on || P(t.pids[0]).name)}</b>
       <span class="muted small">until ${esc(dayShort(t.until))}</span></summary><div class="who" style="margin-top:8px">${t.pids.map(id => pill(id)).join(' ')}</div>${takeBlock(t)}</details>`);
   }
-  right.push(nextDayPanel(), matchupPanel(), weekPanel(), movesPanel(), vsPanel(), standingsPanel());
+  right.push(matchupPanel(), nextMatchupPanel(), nextDayPanel(), weekPanel(), movesPanel(), vsPanel(), standingsPanel());
   return top.join('') + `<div class="dash"><div>${left.join('')}</div><div>${right.join('')}</div></div>`;
 }
 
@@ -254,6 +254,31 @@ function matchupPanel() {
   return `<div class="panel"><h3>Week ${m.period} vs ${esc(opp.abbrev)} <a href="#" data-goto="week">This week →</a></h3>
     <p class="cap">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}. ${esc(opp.name)}. Expected starts left: ${n0(m.me.starts)} for you, ${n0(m.them.starts)} for them.</p>
     ${Charts.race([{ label: abbr(me()) + ' (you)', done: m.me.score, rest: m.me.remaining, cls: 'mine' }, { label: opp.abbrev, done: m.them.score, rest: m.them.remaining }])}</div>`;
+}
+// Next week's matchup, projected from both rosters as they stand (neither side's future adds counted).
+function nextMatchupPanel() {
+  const m = S.data.next_matchup;
+  if (!m || !m.me || !m.them) return '';
+  const opp = team(m.opp), W = S.data.plan;
+  const ahead = m.me.projected - m.them.projected;
+  const planned = W && W.next_week && W.moves.length ? W.points : null;
+  const rows = [
+    { label: abbr(me()) + ' (you)', value: m.me.projected, cls: 'mine',
+      tip: `You: ${n0(m.me.projected)} expected points from ${n1(m.me.starts)} expected starts, roster as it is` },
+    { label: opp.abbrev, value: m.them.projected, cls: 'dim',
+      tip: `${opp.abbrev} (${opp.name}): ${n0(m.them.projected)} expected points from ${n1(m.them.starts)} expected starts, roster as it is` },
+  ];
+  const days = m.me.by_day.map(([d, a], i) => {
+    const b = (m.them.by_day[i] || [])[1] || 0;
+    return `<td class="r ${a >= b ? 'pos' : 'neg'}" data-tip="${esc(dayLabel(d))}: you ${n0(a)}, ${esc(opp.abbrev)} ${n0(b)}">${signed(a - b)}</td>`;
+  }).join('');
+  const heads = m.me.by_day.map(([d]) => `<th class="r">${isoDate(d).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })}</th>`).join('');
+  return `<div class="panel"><h3>Next: week ${m.period} vs ${esc(opp.abbrev)}</h3>
+    <p class="cap">${dayLabel(m.dates[0])} – ${dayLabel(m.dates[1])}${m.playoffs ? ' · playoffs' : ''}. ${esc(opp.name)}.
+      Both rosters as they are now, best lineup each day; nobody's future pickups counted.
+      You're projected to <b class="${ahead >= 0 ? 'pos' : 'neg'}">${ahead >= 0 ? 'win' : 'lose'} by ${n0(Math.abs(ahead))}</b>${planned != null ? `; the suggested moves would make yours ${n0(planned)} (${signed(planned - m.me.projected)})` : ''}.</p>
+    ${Charts.hbars(rows, { labelWidth: 90, max: Math.max(m.me.projected, m.them.projected) })}
+    <div class="scroll-x"><table class="tbl small" style="margin-top:8px"><thead><tr><th>You vs them</th>${heads}</tr></thead><tbody><tr><td class="muted">by day</td>${days}</tr></tbody></table></div></div>`;
 }
 // The week's lineups as your roster stands (S.lu 'mine') or with the suggested adds ('plan').
 function weekLineups(W) {
@@ -367,7 +392,7 @@ function viewWeekPage() {
     Today's lineup is below; anything you add now counts from ${esc(dayLabel(W.days[0]))}.</div>`);
   if (W && W.lineups && W.lineups.length) out.push(`<div class="panel"><h3>${W.next_week ? 'Next week' : 'Rest of the week'}: expected points a day</h3>
     ${luToggle(W)}<p class="cap">${luCaption(W)} Each day's lineup is listed below.</p>${dayCols(W)}</div>`);
-  out.push(matchupPanel(), lineupCard(), viewWeek());
+  out.push(matchupPanel(), nextMatchupPanel(), lineupCard(), viewWeek());
   return out.join('');
 }
 function viewMyInjuries() {

@@ -360,6 +360,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
             for pid, o in outlook.items():
                 players[pid]["lineup"] = o
     match = advice.matchup(league, players, me, calendar)
+    match_next = advice.matchup(league, players, me, calendar, ahead=1)
     opp = match["opp"] if match else None
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)
@@ -398,7 +399,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
         "plan": plan, "trades": trades, "league_moves": league_moves,
-        "matchup": match, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
+        "matchup": match, "next_matchup": match_next, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
         "gamelog": page_gamelog(log, players, games, calendar, own, boxes),

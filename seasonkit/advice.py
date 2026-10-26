@@ -709,19 +709,25 @@ def drop_order(league, players, me):
 
 # ---------- the matchup ----------
 
-def matchup(league, players, me, calendar):
+def matchup(league, players, me, calendar, ahead=0):
+    """This week's matchup (ahead=0): the score so far plus each side's best daily lineups for the days
+    left. ahead=1: next week's, projected over all its days from both rosters as they are now."""
     week = calendar.current_week()
     if week is None:
+        return None
+    week += ahead
+    if week >= len(calendar.weeks):
         return None
     period = week + 1
     m = next((m for m in league["matchups"] if m["period"] == period and me in (m["home"], m["away"])), None)
     if not m:
         return None
     opp = m["away"] if m["home"] == me else m["home"]
-    days = [d for d in calendar.days_left_in_week(week) if d >= calendar.start]
+    days = ([d for d in calendar.days_left_in_week(week) if d >= calendar.start] if not ahead
+            else [calendar.weeks[week][0] + timedelta(days=i) for i in range((calendar.weeks[week][1] - calendar.weeks[week][0]).days + 1)])
     score = {me: m["home_pts"] if m["home"] == me else m["away_pts"],
              opp: m["away_pts"] if m["home"] == me else m["home_pts"]}
-    out = {"period": period, "opp": opp, "playoffs": week >= calendar.regular,
+    out = {"period": period, "opp": opp, "playoffs": week >= calendar.regular, "ahead": ahead,
            "dates": [str(calendar.weeks[week][0]), str(calendar.weeks[week][1])]}
     for side, tid in (("me", me), ("them", opp)):
         if tid is None:
