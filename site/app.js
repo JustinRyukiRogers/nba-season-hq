@@ -275,7 +275,8 @@ function luCaption(W) {
 }
 function dayCols(W) {
   return Charts.columns(weekLineups(W).lineups.map(x => ({
-    label: isoDate(x.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), sub: plural(x.games, 'game'), value: x.points,
+    label: isoDate(x.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+    sub: x.bench.length ? `${x.games - x.bench.length} of ${x.games} start` : plural(x.games, 'game'), value: x.points,
     tip: `${dayLabel(x.date)}: ${n0(x.points)} expected points, ${n1(x.starts)} expected starts of ${x.games} games`
       + (x.crunch >= 1 ? ` · ${n0(x.crunch)} lost to full slots${x.bench.length ? ' (left out: ' + x.bench.map(b => P(b[0]).name).join(', ') + ')' : ''}` : '')
       + (x.moves.length ? ' · add ' + x.moves.map(m => P(m.id).name).join(', ') : ''),
@@ -301,7 +302,7 @@ function nextDayPanel() {
     <span class="r">${n1(prob * P(id).ros.fppg)}</span></div>`).join('');
   const moves = day.moves.map(m => `add ${esc(P(m.id).name)}${m.drop ? ' for ' + esc(P(m.drop).name) : ''}`).join(', ');
   const verdict = day.bench.length
-    ? `<b>${plural(day.games, 'player')} with a game for ${day.slots.length} slots</b>${empty ? `, and ${plural(empty, 'slot')} can't be filled by position` : ''}.
+    ? `<b>${plural(day.games, 'player')} have a game, but only ${day.games - day.bench.length} can start</b>${empty ? `: ${plural(empty, 'slot')} can't be filled by position` : ': more games than slots'}.
        Leave out ${day.bench.map(b => esc(P(b[0]).name)).join(', ')}: the lowest expected points among those who can't fit.
        The full slots cost about <b>${n0(day.crunch)}</b> points (less than his full projection, since he still fills in if a starter sits).`
     : `Everyone with a game fits in the lineup${empty ? ` (${plural(empty, 'slot')} empty: not enough games)` : ''}.`;
@@ -565,7 +566,7 @@ function viewWeek() {
         { prefix: '<span class="chip slot">BE</span> ', meta: esc(gameOn(p, day.date)) + (prob ? ' · starts only if a starter sits' : ''), plain: true, cls: 'benched' });
     }).join('');
     const idle = day.idle.map(id => esc(P(id).name)).join(', ');
-    out.push(`<h2>${esc(dayLabel(day.date))} <span class="sub">${plural(day.games, 'game')} · ${n0(day.points)} expected points${day.date === d.calendar.today ? ' · today' : ''}</span></h2>
+    out.push(`<h2>${esc(dayLabel(day.date))} <span class="sub">${day.bench.length ? `${day.games - day.bench.length} of ${day.games} games can start` : plural(day.games, 'game')} · ${n0(day.points)} expected points${day.date === d.calendar.today ? ' · today' : ''}</span></h2>
       ${moves}<div class="rows">${rows}${bench}</div>
       <p class="small muted">${empty ? `${plural(empty, 'slot')} empty (no one eligible). ` : ''}${day.crunch >= 1 ? `Full slots cost about ${n0(day.crunch)} points. ` : ''}${idle ? 'No game: ' + idle.replace(/\.?$/, '.') : ''}</p>`);
   }
