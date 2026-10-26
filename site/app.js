@@ -192,7 +192,7 @@ function viewDashboard() {
   const top = [];
   if (d.problems && d.problems.length) top.push(`<div class="banner warn small">${d.problems.map(esc).join('<br>')}</div>`);
   if (cal.today < cal.start) top.push(`<div class="banner">The season starts <b>${dayLabel(cal.start)}</b>. Lineup checks begin that day.</div>`);
-  top.push(statRow());
+  top.push(h2hHero(), statRow());
   if (S.changes.length) {
     left.push(`<div class="panel"><h3>Since you last looked <span class="sub">${S.prev ? 'data from ' + esc(whenLabel(S.prev.at)) : ''}</span></h3>`
       + S.changes.map(c => `<div class="small">${c}</div>`).join('') + '</div>');
@@ -210,8 +210,143 @@ function viewDashboard() {
     for (const t of takes) left.push(`<details class="card take-sum"><summary><span class="tk ${t.stance}">${STANCE[t.stance]}</span> <b>${esc(t.on || P(t.pids[0]).name)}</b>
       <span class="muted small">until ${esc(dayShort(t.until))}</span></summary><div class="who" style="margin-top:8px">${t.pids.map(id => pill(id)).join(' ')}</div>${takeBlock(t)}</details>`);
   }
-  right.push(matchupPanel(), nextMatchupPanel(), nextDayPanel(), weekPanel(), movesPanel(), vsPanel(), standingsPanel());
+  right.push(nextDayPanel(), weekPanel(), movesPanel(), vsPanel(), standingsPanel());
   return top.join('') + `<div class="dash"><div>${left.join('')}</div><div>${right.join('')}</div></div>`;
+}
+
+// ----- the head-to-head: the dashboard's centerpiece -----
+// This week's matchup, or next week's (S.hw); the default turns to next week with two days or fewer left.
+function h2hWhich() {
+  const d = S.data, cur = d.matchup, nxt = d.next_matchup;
+  const ok = m => m && m.me && m.them && m.h2h;
+  if (S.hw === 'next' && ok(nxt)) return nxt;
+  if (S.hw === 'this' && ok(cur)) return cur;
+  if (ok(cur) && (cur.me.by_day.length > 2 || !ok(nxt))) return cur;
+  return ok(nxt) ? nxt : null;
+}
+function wkday(iso) { return isoDate(iso).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }); }
+function h2hHero() {
+  const m = h2hWhich();
+  if (!m) return '';
+  const d = S.data, H = m.h2h, opp = team(m.opp), mine = team(me());
+  const rec = t => t.record ? `${t.record.w}–${t.record.l}${t.record.t ? '–' + t.record.t : ''}` : '';
+  const mePts = H.planned != null ? H.planned : m.me.projected, themPts = m.them.projected;
+  const margin = mePts - themPts, total = Math.max(1, mePts + themPts);
+  const share = 100 * mePts / total;
+  const live = !m.ahead && (m.me.score || m.them.score);
+  const toggle = d.next_matchup && d.next_matchup.h2h && d.matchup && d.matchup.h2h
+    ? `<div class="seg h2h-seg"><button data-hw="this" class="${m.ahead ? '' : 'on'}">This week · ${esc(abbr(d.matchup.opp))}</button>`
+      + `<button data-hw="next" class="${m.ahead ? 'on' : ''}">Next week · ${esc(abbr(d.next_matchup.opp))}</button></div>` : '';
+  const side = (cls, t, score, proj, sub) => `<div class="h2h-side ${cls}">
+      <div class="h2h-abbr">${esc(t.abbrev)}${cls === 'me' ? ' <span>you</span>' : ''}</div>
+      <div class="h2h-name">${esc(t.name)} · ${rec(t)}</div>
+      <div class="h2h-big">${live ? n0(score) : n0(proj)}</div>
+      <div class="h2h-sub">${live ? `projected <b>${n0(proj)}</b>` : 'projected'}${sub}</div></div>`;
+  const meSub = H.planned != null ? ` <span class="muted">(${n0(m.me.projected)} as is)</span>` : '';
+  const head = `<div class="h2h-top"><div class="h2h-kicker">Week ${m.period}${m.playoffs ? ' · playoffs' : ''} · ${esc(dayLabel(m.dates[0]))} – ${esc(dayLabel(m.dates[1]))}</div>${toggle}</div>
+    <div class="h2h-board">${side('me', mine, m.me.score, mePts, meSub)}
+      <div class="h2h-mid"><div class="h2h-margin ${margin >= 0 ? 'up' : 'down'}">${margin >= 0 ? 'Up' : 'Down'} ${n0(Math.abs(margin))}</div>
+        <div class="h2h-mcap">${H.planned != null ? 'with your suggested moves' : 'rosters as they stand'}</div></div>
+      ${side('them', opp, m.them.score, themPts, ` · reach +${n0(H.reach)} streaming`)}</div>
+    <div class="h2h-tug" data-tip="Share of the projected points: you ${n0(mePts)}, ${esc(opp.abbrev)} ${n0(themPts)}">
+      <i class="me" style="width:${share.toFixed(1)}%"></i><i class="them"></i><b style="left:50%"></b></div>`;
+
+  // day strip: mirrored bars, you up in blue, them down in red
+  const days = H.lineups.me.map((a, i) => [a, H.lineups.them[i]]);
+  if (!S.hd || !days.some(([a]) => a.date === S.hd)) S.hd = days.length ? days[0][0].date : null;
+  const top = Math.max(1, ...days.flatMap(([a, b]) => [a.points, b.points]));
+  const strip = days.map(([a, b]) => {
+    const diff = a.points - b.points;
+    return `<button class="h2h-day${a.date === S.hd ? ' on' : ''}" data-hd="${a.date}"
+        data-tip="${esc(dayLabel(a.date))}: you ${n0(a.points)} from ${n1(a.starts)} starts, ${esc(opp.abbrev)} ${n0(b.points)} from ${n1(b.starts)}">
+      <span class="dn">${wkday(a.date)}${a.date === d.calendar.today ? ' <em>today</em>' : ''}</span>
+      <span class="db"><i class="me" style="height:${(42 * a.points / top).toFixed(0)}px"></i></span>
+      <span class="db down"><i class="them" style="height:${(42 * b.points / top).toFixed(0)}px"></i></span>
+      <span class="dd ${diff >= 0.5 ? 'up' : diff <= -0.5 ? 'down' : ''}">${signed(diff)}</span>
+      <span class="ds">${n1(a.starts)} v ${n1(b.starts)}</span></button>`;
+  }).join('');
+
+  return `<section class="h2h">${head}
+    <div class="h2h-days" role="tablist" aria-label="Days">${strip}</div>
+    <div class="h2h-body"><div>${h2hFaceoff(m, days.find(([a]) => a.date === S.hd))}</div>
+      <div>${h2hCalls(m)}${h2hMoves(m)}</div></div>
+    ${h2hCarry(m)}</section>`;
+}
+// One day's best lineups, slot by slot: yours on the left, theirs on the right.
+function h2hFaceoff(m, pair) {
+  if (!pair) return '';
+  const [a, b] = pair, opp = team(m.opp);
+  const game = (pid, date) => {
+    const g = (P(pid).next || []).find(x => x[0] === date);
+    return g ? `${g[2] ? 'vs' : '@'} ${esc(g[1])} ${timeLabel(g[3])}` : '';
+  };
+  const cell = (r, side) => {
+    const [, pid, prob, pts, locked] = r;
+    if (!pid) return `<div class="fo-cell ${side} empty">empty</div>`;
+    const p = P(pid);
+    const odds = prob != null && prob < 0.9 && (p.status !== 'ACTIVE' || (p.inj && p.inj.status)) ? ` <span class="fo-odds" title="Chance he plays">${Math.round(prob * 100)}%</span>` : '';
+    return `<div class="fo-cell ${side}" data-pid="${pid}"><div class="fo-nm">${esc(p.name)} ${statusChip(p)}${odds}</div>
+      <div class="fo-meta">${esc(p.team)} · ${locked ? 'locked in' : game(pid, a.date)}</div>
+      <div class="fo-pts">${locked ? '<span class="muted">live</span>' : n1(pts)}</div></div>`;
+  };
+  const rows = a.slots.map((r, i) => {
+    const t = b.slots[i] || [r[0]], x = r[3] || 0, y = t[3] || 0;
+    return `<div class="fo-row ${x > y + 0.5 ? 'win' : y > x + 0.5 ? 'lose' : ''}">${cell(r, 'me')}<div class="fo-slot">${esc(r[0])}</div>${cell(t, 'them')}</div>`;
+  }).join('');
+  const bench = (lu) => {
+    const out = lu.bench.map(([pid, prob]) => `<span class="pill" data-pid="${pid}">${esc(P(pid).name)} <span class="muted">${Math.round(prob * 100)}%</span></span>`);
+    return out.length ? out.join('') : '<span class="muted small">nobody</span>';
+  };
+  return `<div class="fo-head"><span class="me">You · ${n0(a.points)} <small>${n1(a.starts)} starts</small></span>
+      <span class="fo-title">${esc(dayLabel(a.date))} · best lineups${m.h2h.planned != null ? ' · yours with the moves' : ''}</span>
+      <span class="them">${esc(opp.abbrev)} · ${n0(b.points)} <small>${n1(b.starts)} starts</small></span></div>
+    <div class="fo">${rows}</div>
+    <div class="fo-bench"><div><span class="lbl">Your bench with a game</span>${bench(a)}</div><div class="r"><span class="lbl">Theirs</span>${bench(b)}</div></div>
+    ${(a.moves || []).filter(x => x.kind === 'add').map(x => `<div class="small" style="margin-top:6px"><span class="urg soon">Planned</span> add ${pill(x.id)} for ${x.drop ? pill(x.drop) : 'the open spot'}</div>`).join('')}
+    <p class="cap" style="margin-top:8px">Points are expected (chance he plays × points a game). Slots pair up by position only; the day is won on the totals.${a.crunch >= 1 ? ` You leave about ${n0(a.crunch)} on your bench this day.` : ''}</p>`;
+}
+// The calls: the matchup's own, after the to-dos that move this matchup's points.
+function h2hCalls(m) {
+  const d = S.data, W = d.plan;
+  const kinds = new Set(['lineup', 'lineup_warning', 'ir_blocked', 'stream']);
+  const acts = (!m.ahead || (W && W.next_week)) ? visibleActs().filter(a => kinds.has(a.kind)) : [];
+  const item = c => {
+    const u = urgencyOf(c);
+    return `<details class="call ${u}"><summary><span class="urg ${u}">${URGENCY[u]}${c.by ? ' · by ' + esc(whenLabel(c.by)) : ''}</span>${esc(c.title)}</summary>
+      ${c.detail ? `<div class="d">${esc(c.detail)}</div>` : ''}${c.why ? `<div class="d">${esc(c.why)}</div>` : ''}</details>`;
+  };
+  return `<div class="h2h-h">The calls</div>${acts.map(item).join('')}${m.h2h.calls.map(item).join('')}
+    <p class="cap">The toss-up band (10% of their total) is a judgment call, untested. "Reach" is the most they gain adding the best free agent every day.</p>`;
+}
+function h2hMoves(m) {
+  const H = m.h2h, opp = team(m.opp);
+  const rows = H.their_moves.map(f => {
+    const ins = f.got.map(id => `<span class="mv in" data-pid="${id}">+ ${esc(P(id) ? P(id).name : id)}</span>`).join('');
+    const outs = f.gave.map(id => `<span class="mv out" data-pid="${id}">− ${esc(P(id) ? P(id).name : id)}</span>`).join('');
+    const g = f.per_week != null ? `<span class="${f.per_week >= 0 ? 'pos' : 'neg'}" title="Change in their simulated lineup points a week, rest of season">${signed(f.per_week)}/wk</span>` : '';
+    return `<div class="tl"><span class="tl-when">${esc(whenLabel(f.at))}<br><span class="muted">${esc(f.kind)}</span></span><span class="tl-what">${ins}${outs}</span>${g}</div>`;
+  }).join('');
+  return `<div class="h2h-h">${esc(opp.abbrev)}'s recent moves <span class="muted">· ${plural(H.adds.them, 'add')} this week (you ${H.adds.me})</span></div>
+    ${rows || '<p class="muted small">No moves in the last 10 days.</p>'}
+    ${H.doubt.them.length ? `<div class="h2h-h">Their question marks</div>${H.doubt.them.map(r => `<span class="pill" data-pid="${r.id}">${esc(P(r.id).name)} ${statusChip(P(r.id))} <span class="muted">${r.games}g · ${Math.round(r.odds * 100)}%</span></span>`).join('')}` : ''}`;
+}
+// Who carries each side's week: expected points from starts, ranked, mirrored.
+function h2hCarry(m) {
+  const H = m.h2h, opp = team(m.opp), a = H.carry.me, b = H.carry.them;
+  const n = Math.max(a.length, b.length);
+  if (!n) return '';
+  const top = Math.max(1, ...a.map(r => r[2]), ...b.map(r => r[2]));
+  const half = (r, side) => {
+    if (!r) return `<div class="cy ${side}"></div>`;
+    const [pid, starts, pts, games] = r, p = P(pid);
+    return `<div class="cy ${side}" data-pid="${pid}" data-tip="${esc(p.name)}: ${n0(pts)} expected points from ${n1(starts)} starts (${games} games)">
+      <span class="cy-nm">${esc(p.name)} ${statusChip(p)}</span><span class="cy-v">${n0(pts)}</span>
+      <span class="cy-track"><i style="width:${(100 * pts / top).toFixed(1)}%"></i></span></div>`;
+  };
+  let rows = '';
+  for (let i = 0; i < n; i++) rows += `<div class="cy-row">${half(a[i], 'me')}<span class="cy-rank">${i + 1}</span>${half(b[i], 'them')}</div>`;
+  return `<div class="h2h-h" style="margin-top:14px">Who carries the week <span class="muted">· expected points from starts over the days left, best lineup each day</span></div>
+    <div class="cy-head"><span>You</span><span>${esc(opp.abbrev)}</span></div><div class="carry">${rows}</div>`;
 }
 
 function stat(goto, k, v, s, cls = '') {
@@ -220,7 +355,7 @@ function stat(goto, k, v, s, cls = '') {
 function statRow() {
   const d = S.data, m = d.matchup, L = d.lineup, W = d.plan, U = d.upgrades, M = d.league_moves;
   const tiles = [];
-  if (m && m.me && m.them) {
+  if (m && m.me && m.them && !m.h2h) {   // the head-to-head above shows it otherwise
     const ahead = m.me.projected - m.them.projected;
     tiles.push(stat('week', `Week ${m.period} vs ${esc(abbr(m.opp))}`, `${n0(m.me.score)}–${n0(m.them.score)}`,
       `projected ${n0(m.me.projected)}–${n0(m.them.projected)} (${signed(ahead)})`, ahead >= 0 ? 'pos' : 'neg'));
@@ -1307,7 +1442,7 @@ function boot() {
   });
   $('#btn-reload').addEventListener('click', () => refresh(false));
   $('#view').addEventListener('click', e => {
-    const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],#lock-now');
+    const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],#lock-now');
     if (!t) return;
     if (t.dataset.srange != null) { S.st.range = t.dataset.srange; saveStats(); render(); return; }
     if (t.dataset.sper != null) { S.st.per = t.dataset.sper; saveStats(); render(); return; }
@@ -1316,6 +1451,8 @@ function boot() {
       S.st.dir = S.st.sort === t.dataset.ssort ? -S.st.dir : (t.dataset.ssort === 'name' ? 1 : -1);
       S.st.sort = t.dataset.ssort; render(); return;
     }
+    if (t.dataset.hw) { S.hw = t.dataset.hw; S.hd = null; render(); return; }
+    if (t.dataset.hd) { S.hd = t.dataset.hd; render(); return; }
     if (t.dataset.dismiss != null) { setHidden(t.dataset.dismiss, true); render(); return; }
     if (t.dataset.unhide) { e.preventDefault(); setHidden(null, false); render(); return; }
     if (t.dataset.goto) { e.preventDefault(); go(t.dataset.goto); return; }

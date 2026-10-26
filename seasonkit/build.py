@@ -361,6 +361,8 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
                 players[pid]["lineup"] = o
     match = advice.matchup(league, players, me, calendar)
     match_next = advice.matchup(league, players, me, calendar, ahead=1)
+    for mt in (match, match_next):   # the head-to-head: both lineups a day, their moves, the calls
+        advice.h2h(league, players, me, calendar, mt, plan, league_moves, txs)
     opp = match["opp"] if match else None
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)

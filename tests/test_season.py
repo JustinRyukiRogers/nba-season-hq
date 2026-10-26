@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -446,6 +447,30 @@ def test_league_moves():
     side = add["list"][0]["sides"]
     assert [x["team"] for x in side] == [5] and side[0]["got"] == [9] and side[0]["gave"] == [2], "free agency is no side: %s" % side
     assert add["unmatched"] == [], "a dropped player may be anywhere"
+
+def test_h2h_calls():
+    players = {1: {"name": "A", "ros": {"fppg": 30.0}}, 2: {"name": "B", "ros": {"fppg": 20.0}}}
+    lu = lambda date, starts, crunch=0.0: {"date": date, "starts": starts, "crunch": crunch}
+    h = {"reach": 20.0, "threat": [["2026-10-27", 2, 20.0]], "adds": {"me": 0, "them": 1},
+         "open": {"me": [1.0, 6.0], "them": [1.0, 2.0]},
+         "lineups": {"me": [lu("2026-10-26", 9.0), lu("2026-10-27", 4.0, 12.0)]},
+         "doubt": {"them": [{"id": 1, "games": 3, "odds": 0.5, "at_stake": 45.0}]}}
+    cal = types.SimpleNamespace(now=0)
+    plan = {"moves": [{"kind": "add", "id": 2, "day": "2026-10-27", "by": 3600}]}
+    titles = lambda calls: [c["title"] for c in calls]
+    calls = advice.h2h_calls(players, {"ahead": 0}, h, cal, 1000.0, 1000.0, 1050.0, plan)
+    assert calls[0]["title"].startswith("Toss-up") and calls[0]["urgency"] == "soon"
+    assert any(t.startswith("Race: B") for t in titles(calls))             # their best stream is our planned add
+    race = next(c for c in calls if c["title"].startswith("Race"))
+    assert race["urgency"] == "now"                                          # its tip-off is within a day
+    assert any(t.startswith("Your thin days: Tue") for t in titles(calls))   # 6 empty vs 2
+    assert any(t.startswith("Benched points: Tue") for t in titles(calls))
+    assert any(t.startswith("Watch A") for t in titles(calls))
+    far = advice.h2h_calls(players, {"ahead": 1}, h, cal, 1300.0, 1000.0, None)
+    assert far[0]["title"].startswith("Comfortable")                         # +300 beats band 100 + reach 20
+    behind = advice.h2h_calls(players, {"ahead": 1}, h, cal, 800.0, 1000.0, None)
+    assert behind[0]["title"].startswith("Long shot")
+
 
 def test_hunches():
     start = date(2026, 11, 2)

@@ -740,6 +740,152 @@ def matchup(league, players, me, calendar, ahead=0):
     return out
 
 
+# Matchup calls. A margin within this share of their projected total is a toss-up. A guess, untested:
+# week 1 here was decided by 76 to 212 points on totals of 950 to 1250.
+H2H_CLOSE = 0.10
+H2H_THREAT_POOL = 8       # free agents tried each day as the opponent's best stream
+H2H_MOVES_DAYS = 10       # the opponent's moves shown, days back
+
+
+def h2h(league, players, me, calendar, match, plan=None, moves=None, txs=()):
+    """The head-to-head detail for a matchup from `matchup`: each side's best lineup for every day left
+    (today's ESPN slots hold for anyone locked), who carries each side's week, the opponent's recent
+    moves and adds, what they could still gain by streaming the best free agent each day, their
+    players in doubt, and the calls that follow. Adds `match["h2h"]`; returns match."""
+    if not match or not match.get("me") or not match.get("them"):
+        return match
+    starting, opp, ahead = league["starting"], match["opp"], match["ahead"]
+    days = [parse_day(d) for d, _, _ in match["me"]["by_day"]]
+    sides = {}
+    for side, tid in (("me", me), ("them", opp)):
+        ids = [e["id"] for e in roster(league, tid, include_ir=False) if e["id"] in players]
+        locked = {} if ahead else {e["id"]: e["slot"] for e in roster(league, tid, include_ir=False, today=True)}
+        today_ids = [pid for pid in locked if pid in players]
+        lineups = [day_lineup(today_ids if d == calendar.today and not ahead else ids, d, players, starting, calendar,
+                              locked if d == calendar.today else {}) for d in days]
+        _, _, by_player = project_days(ids, days, players, starting, calendar)
+        carry = sorted(([pid, round(s, 1), round(pts, 1), sum(1 for d in days if players[pid]["odds"].get(str(d)))]
+                        for pid, (s, pts) in by_player.items()), key=lambda r: -r[2])
+        doubt = []
+        for pid in ids:
+            p = players[pid]
+            odds = [p["odds"][str(d)] for d in days if str(d) in p["odds"]]
+            if odds and (p["status"] != "ACTIVE" or (p.get("inj") or {}).get("status")):   # on the report, not the far-off discount
+                doubt.append({"id": pid, "games": len(odds), "odds": round(sum(odds) / len(odds), 2),
+                              "at_stake": round((len(odds) - sum(odds)) * p["ros"]["fppg"], 1)})
+        doubt.sort(key=lambda r: -r["at_stake"])
+        adds = (league["teams"][str(tid)].get("adds") or {}).get(str(match["period"]), 0)
+        sides[side] = {"lineups": lineups, "carry": carry, "doubt": doubt, "adds": adds, "ids": ids,
+                       "open": [round(len(starting) - lu["starts"], 1) for lu in lineups]}
+
+    # what the opponent could still add: the best free agent each day an add counts, in place of their
+    # lowest-valued droppable player, on that day's simulated lineup (one add a day)
+    first = calendar.first_tip(calendar.today)
+    add_days = [d for d in days if d > calendar.today or (d == calendar.today and not (first and calendar.now >= first))]
+    them_ids = sides["them"]["ids"]
+    drop = weakest(players, [{"id": x} for x in them_ids])
+    pool = [p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]]
+    threat = []
+    for d in add_days:
+        cands = lambda ids: [(x, players[x]["odds"].get(str(d), 0.0), players[x]["ros"]["fppg"], players[x]["slots"])
+                             for x in ids if players[x]["odds"].get(str(d), 0.0) > 0 and calendar.game_on(players[x]["team"], d)]
+        base, _ = lineup_day(cands(them_ids), starting, str(d))
+        best = sorted((p for p in pool if p["odds"].get(str(d))), key=lambda p: -p["odds"][str(d)] * p["ros"]["fppg"])[:H2H_THREAT_POOL]
+        top = (None, 0.0)
+        for p in best:
+            ids = [x for x in them_ids if x != drop] + [p["id"]]
+            pts, _ = lineup_day(cands(ids), starting, str(d))
+            if pts - base > top[1]:
+                top = (p["id"], pts - base)
+        threat.append([str(d), top[0], round(top[1], 1)])
+
+    # their moves: the league feed (judged) and anything newer in the transactions
+    since = calendar.now - H2H_MOVES_DAYS * 86400
+    feed = []
+    for mv in (moves or {}).get("list", []):
+        side = next((s for s in mv["sides"] if s["team"] == opp), None)
+        if side and mv["at"] >= since:
+            feed.append({"at": mv["at"], "kind": mv["kind"], "got": side["got"], "gave": side["gave"],
+                         "gain": side["gain"], "per_week": side["per_week"], "value": side["value"]})
+    seen = {(f["at"], tuple(f["got"])) for f in feed}
+    for t in txs:
+        if t["team"] == opp and t["at"] >= since and (t["at"], tuple(t["adds"])) not in seen and (t["adds"] or t["drops"]):
+            feed.append({"at": t["at"], "kind": (t["type"] or "").lower(), "got": t["adds"], "gave": t["drops"],
+                         "gain": None, "per_week": None, "value": None})
+    feed.sort(key=lambda f: -f["at"])
+
+    # the margin, with your suggested moves when the week plan covers this matchup
+    me_pts, them_pts = match["me"]["projected"], match["them"]["projected"]
+    planned = None
+    if plan and plan.get("moves") and bool(plan.get("next_week")) == bool(ahead):
+        planned = round(match["me"]["score"] + plan["points"], 1)   # the plan's days: this matchup's days left
+        if [lu["date"] for lu in plan["lineups"]] == [lu["date"] for lu in sides["me"]["lineups"]]:
+            sides["me"]["lineups"] = plan["lineups"]       # your days with the suggested moves made
+            sides["me"]["open"] = [round(len(starting) - lu["starts"], 1) for lu in plan["lineups"]]
+    reach = round(sum(t[2] for t in threat), 1)
+    h = {"lineups": {s: sides[s]["lineups"] for s in sides}, "carry": {s: sides[s]["carry"] for s in sides},
+         "doubt": {s: sides[s]["doubt"] for s in sides}, "adds": {s: sides[s]["adds"] for s in sides},
+         "open": {s: sides[s]["open"] for s in sides}, "threat": threat, "reach": reach,
+         "their_moves": feed, "planned": planned}
+    h["calls"] = h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan if planned is not None else None)
+    match["h2h"] = h
+    return match
+
+
+def h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan=None):
+    """The calls a matchup suggests, each with an urgency (URGENCY), a deadline when there is one and
+    the reason. Judgment on top of the numbers: the toss-up band (H2H_CLOSE) is a guess."""
+    calls = []
+    margin = (planned if planned is not None else me_pts) - them_pts
+    band = H2H_CLOSE * max(them_pts, 1.0)
+    reach = h["reach"]
+    what = "with your suggested moves" if planned is not None else "as the rosters stand"
+    days_word = "next week" if match["ahead"] else "this week"
+    if margin > band + reach:
+        calls.append({"urgency": "optional", "title": "Comfortable: protect the season, not this week",
+                      "why": "You lead by %d %s, more than the toss-up band (%d) plus all they could stream (%d). "
+                             "Skip adds that cost rest-of-season value just for %s's games." % (margin, what, band, reach, days_word)})
+    elif margin < -(band + reach):
+        calls.append({"urgency": "optional", "title": "Long shot: chase upside, not floor",
+                      "why": "You trail by %d %s, beyond the toss-up band (%d). Safe streams won't close it; "
+                             "upside adds (the hunches) might, and they hold value if they hit." % (-margin, what, band)})
+    else:
+        calls.append({"urgency": "soon", "title": "Toss-up: every start counts %s" % days_word,
+                      "why": "The margin %s is %+d, inside the toss-up band (±%d) once their streaming (up to %d) is counted. "
+                             "Make each planned add before its tip-off and recheck injury news before each lock." % (what, margin, band, reach)})
+    # a planned add who is also their best stream: free agents go to whoever adds first
+    theirs = {t[1]: t[0] for t in h["threat"] if t[1] and t[2] >= 5}
+    for m in (plan or {}).get("moves", []):
+        if m["kind"] == "add" and m["id"] in theirs:
+            calls.append({"urgency": "now" if m["by"] and m["by"] - calendar.now <= 86400 else "soon", "by": m["by"],
+                          "title": "Race: %s is their best stream too" % name(players, m["id"]),
+                          "why": "Your plan adds him for %s; he is also the most they could gain on %s. A free agent goes to whoever adds first, and taking him also keeps him off their lineup." % (
+                              parse_day(m["day"]).strftime("%a"), parse_day(theirs[m["id"]]).strftime("%a"))})
+    # thin days: where your lineup has the most empty starts compared with theirs
+    gaps = [(d["date"], h["open"]["me"][i], h["open"]["them"][i]) for i, d in enumerate(h["lineups"]["me"])]
+    thin = [g for g in gaps if g[1] - g[2] >= 2]
+    if thin:
+        lab = ", ".join("%s (%.0f empty vs %.0f)" % (parse_day(d).strftime("%a"), a, b) for d, a, b in thin)
+        calls.append({"urgency": "fyi", "title": "Your thin days: %s" % lab,
+                      "why": "Expected empty starting slots, you vs them. A streamer with a game on those days fills a start they already have; the week plan aims its adds at them."})
+    crunch = [(d["date"], d["crunch"]) for d in h["lineups"]["me"] if d["crunch"] >= 10]
+    if crunch:
+        calls.append({"urgency": "fyi", "title": "Benched points: %s" % ", ".join("%s %.0f" % (parse_day(d).strftime("%a"), c) for d, c in crunch),
+                      "why": "More of your players play those days than you have slots. Don't add anyone who only plays then."})
+    if reach >= 10:
+        best = max(h["threat"], key=lambda t: t[2])
+        calls.append({"urgency": "fyi", "title": "Their streaming reach: up to +%d" % reach,
+                      "why": "If they add the best free agent every day an add still counts (they have made %d this week). Their best day: %s, %s (+%d)." % (
+                          h["adds"]["them"], parse_day(best[0]).strftime("%a"), name(players, best[1]) if best[1] else "nobody", best[2])})
+    for r in h["doubt"]["them"][:2]:
+        if r["at_stake"] >= 10:
+            calls.append({"urgency": "fyi", "title": "Watch %s (theirs): %d game%s at %d%%" % (
+                              name(players, r["id"]), r["games"], "" if r["games"] == 1 else "s", round(100 * r["odds"])),
+                          "why": "If he sits every game, about %d expected points come off their total; if he plays them all, about %d more go on." % (
+                              r["games"] * r["odds"] * players[r["id"]]["ros"]["fppg"], r["at_stake"])})
+    return calls
+
+
 # ---------- league-wide injuries ----------
 
 def injury_board(league, players, me, opp, calendar, beneficiaries=3):
