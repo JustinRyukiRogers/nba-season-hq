@@ -37,7 +37,8 @@ PRIOR_GAMES = 15.0
 # games count twice the 5 before them, and points a minute need about 400 minutes to count half.
 MINUTES_PRIOR_GAMES = 4.0
 MINUTES_HALF_LIFE = 5.0      # games
-MINUTES_RECENT = 12          # games of minutes looked at
+MINUTES_RECENT = 12          # games of minutes looked at, short ones too (leaving out games cut short by an
+                             # ejection or early exit was worse in every season: research/cut_short_games.py)
 RATE_PRIOR_MINUTES = 400.0
 # A player whose recent minutes run MINUTES_BUMP or more over the preseason guess (a new role, or
 # covering for a teammate) gets his own minutes trusted twice as fast. Tested on the same four seasons
