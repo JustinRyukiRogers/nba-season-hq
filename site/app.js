@@ -1409,69 +1409,88 @@ async function fetchData() {
 }
 
 let loading = false;
-// manual: a click on the reload button. It shows a progress bar for at least a second, then a note
-// saying what it found and when the next scheduled refresh should land.
-async function refresh(first, manual) {
+// Loads the latest published data (on open, every 5 minutes, when the tab comes back). Quiet.
+async function refresh(first) {
   if (loading) return;
   loading = true;
-  const started = Date.now();
-  let note = null;
-  const btn = $('#btn-reload');
-  btn.classList.add('spin');
-  btn.disabled = true;
-  if (manual) loadbar('start');
   try {
-    const d = await fetchData();
-    const changed = !S.data || d.generated !== S.data.generated;
-    note = changed
-      ? ['good', 'New data loaded', 'Refreshed at ' + timeLabel(d.generated)]
-      : ['', 'Already up to date', 'Last refresh ' + timeLabel(d.generated) + ' · ' + (d.generated + 20 * 60 > Date.now() / 1000
-          ? 'next one due around ' + timeLabel(d.generated + 20 * 60) : 'the next scheduled one is late')];
-    S.data = d;
-    if (changed) {
-      if (first) S.prev = getJSON('hq.seen');
-      computeChanges();
-      showApp();
-      render();
-    } else {
-      freshness();
-    }
+    await loadData(first);
   } catch (e) {
     if (e.code === 'nokey' || e.code === 'badkey') {
       showLock(e.code === 'badkey' ? 'That passphrase did not open the data.' : '');
     } else if (!S.data) {
       $('#view').innerHTML = `<div class="banner bad">Could not load the data: ${esc(e.message)}. Try again in a minute.</div>`;
     }
-    note = ['bad', 'Could not check', e.message];
   } finally {
-    if (manual) await new Promise(r => setTimeout(r, Math.max(0, 1200 - (Date.now() - started))));
     loading = false;
-    btn.classList.remove('spin');
-    btn.disabled = false;
-    if (manual) {
-      loadbar('done');
-      if (note && S.data) toast(...note);
-    }
   }
 }
 
-function loadbar(step) {
+// Fetches the data and redraws the page if it is newer. Returns whether it was.
+async function loadData(first) {
+  const d = await fetchData();
+  const changed = !S.data || d.generated !== S.data.generated;
+  S.data = d;
+  if (changed) {
+    if (first) S.prev = getJSON('hq.seen');
+    computeChanges();
+    showApp();
+    render();
+  } else {
+    freshness();
+  }
+  return changed;
+}
+
+// The reload button: checks for data newer than what the page has. The data itself is pulled from
+// ESPN by the refresh workflow every 20 minutes (a cron-job.org timer starts it).
+async function pullNow() {
+  if (loading) return;
+  loading = true;
+  const btn = $('#btn-reload');
+  btn.classList.add('spin');
+  btn.disabled = true;
+  const started = Date.now();
+  loadbar(30);
+  try {
+    const changed = await loadData(false);
+    await sleep(Math.max(0, 1000 - (Date.now() - started)));
+    const g = S.data.generated, next = g + 20 * 60;
+    toast(changed ? 'good' : '', changed ? 'Newer data loaded' : 'No newer data yet',
+      'Last pull from ESPN ' + timeLabel(g) + ' (' + ago(g) + ')'
+      + (next > Date.now() / 1000 ? ' · next due around ' + timeLabel(next) : ' · the 20-minute refresh is overdue'));
+  } catch (e) {
+    toast('bad', 'Could not check', e.message);
+  } finally {
+    loadbar('done');
+    loading = false;
+    btn.classList.remove('spin');
+    btn.disabled = false;
+  }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// pct: a number fills the bar to that share; 'done' fills it and fades it out
+function loadbar(pct) {
   const el = $('#loadbar');
-  el.className = 'loadbar';
-  void el.offsetWidth;          // restart the transition
-  el.classList.add(step === 'start' ? 'run' : 'done');
+  if (pct === 'done') {
+    el.className = 'loadbar done';
+    el.style.width = '';
+    return;
+  }
+  el.className = 'loadbar run';
+  el.style.width = pct + '%';
 }
 
 let toastTimer = null;
-function toast(kind, head, sub) {
+// ms 0 keeps it up until the next toast
+function toast(kind, head, sub, ms = 5000) {
   const el = $('#toast');
-  el.className = 'toast ' + kind;
+  el.className = 'toast show ' + kind;
   el.innerHTML = `<b>${esc(head)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
   el.hidden = false;
-  void el.offsetWidth;
-  el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.classList.remove('show'); setTimeout(() => { el.hidden = true; }, 300); }, 4000);
+  if (ms) toastTimer = setTimeout(() => { el.classList.remove('show'); setTimeout(() => { el.hidden = true; }, 300); }, ms);
 }
 
 function showLock(msg) {
@@ -1516,7 +1535,7 @@ function boot() {
     render();
     window.scrollTo(0, 0);
   });
-  $('#btn-reload').addEventListener('click', () => refresh(false, true));
+  $('#btn-reload').addEventListener('click', pullNow);
   $('#view').addEventListener('click', e => {
     const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],[data-hv],#lock-now');
     if (!t) return;
