@@ -40,6 +40,19 @@ that teammate context and team minutes budgets don't help the model *on average*
 (research/minutes_backtest.py, research/minutes_budget.py), so a take is about a specific case with
 specific evidence, not a general rule.
 
+### Before a take backs a player the HQ doesn't (a pickup, a different drop)
+
+Run `python3 .claude/skills/judgement-call/compare_adds.py "<player>=<your points a game>"` (add `--drops`
+to name the candidates). It plays every add against every drop through the HQ's lineup simulation (slot
+eligibility, who plays each day) on the HQ's numbers and on yours, beside the HQ's own top add. Then:
+
+- Say which tested piece of the model your number overrides, and why this case is outside what was
+  tested. Three or four games are not enough on their own: on 2026-10-26/27 two takes in a row flipped to
+  whichever player the user had just named (Eason, then Thybulle), each on a handful of games, and the
+  backtests behind both (research/cut_short_games.py, research/rate_prior.py) sided with the HQ.
+- If the take only wins on your number, say so and give the HQ's number's result too.
+- The season column counts: when behind in a matchup, only moves that hold season value.
+
 ## 3. Record the takes
 
 Edit `data/takes.json` (private, gitignored). One take per player or decision:

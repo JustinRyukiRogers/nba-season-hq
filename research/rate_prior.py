@@ -21,6 +21,19 @@ research/minutes_backtest.py (run that first); only players the board would have
 top POOL of ESPN's projections each season). RMSE in points a game, weighted by games; and the
 pick test (3 best from a waiver-level pool each checkpoint, next week's points).
 
+Results (2026-10-27), RMSE in points a game by season 2022 2024 2025 2026:
+    week, all rows      espn 8.579 8.488 8.604 8.519   board 8.544 8.468 8.591 8.506   record about espn
+    ros, all rows       espn 5.461 5.561 5.610 5.675   board 5.527 5.539 5.588 5.649
+    flagged rows: board better in all four for the week and three of four for ros; mean error next week
+        espn +0.92 (runs high), board -0.04, record +0.90
+    flagged and playing 5+ minutes over ESPN's projection (the Thybulle case, 2171 rows): week mixed
+        (board better in 2022, worse by 0.02-0.07 after), ros board better in all four; mean error
+        next week espn +0.31, board -0.52
+    picks: espn 97.3, board 97.1, record 97.3 (noise)
+So the calibrated rate the HQ ships is the better start, flagged players included; the cuts carry
+into the rate on purpose. No change. A small shrink back toward ESPN for flagged players whose
+minutes jumped might gain a few hundredths for the week; not worth a rule.
+
     python3 research/rate_prior.py
 """
 import json
