@@ -84,9 +84,26 @@ a { color: var(--accent-ink); }
 .icon-btn { padding: 6px; display: grid; place-items: center; border-radius: 50%; }
 .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.fresh.flash { color: var(--ink); font-weight: 600; animation: flash 3s ease-out; }
-@keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 25%, transparent); } 100% { background: transparent; } }
-.fresh { border-radius: 4px; padding: 0 4px; margin: 0 -4px; }
+.icon-btn:disabled { opacity: 1; cursor: progress; color: var(--accent); }
+/* progress along the header's bottom edge: creeps toward 90% while loading, then fills and fades */
+.loadbar {
+  position: absolute; left: 0; bottom: -1px; height: 3px; width: 0; opacity: 0;
+  background: var(--accent); pointer-events: none;
+}
+.loadbar.run { opacity: 1; width: 90%; transition: width 1.2s cubic-bezier(0.1, 0.7, 0.3, 1); }
+.loadbar.done { opacity: 0; width: 100%; transition: width 0.2s ease-out, opacity 0.4s ease 0.25s; }
+.toast {
+  position: fixed; z-index: 30; right: 16px; top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+  max-width: min(360px, calc(100vw - 32px));
+  display: grid; gap: 2px; padding: 10px 14px; border-radius: 10px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px; opacity: 0; transform: translateY(-6px); transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show { opacity: 1; transform: none; }
+.toast.good { border-left-color: var(--good); }
+.toast.bad { border-left-color: var(--warning-ink); }
+.toast span { color: var(--muted); font-size: 12px; }
 
 .tabs { display: flex; gap: 2px; }
 .tabs button {

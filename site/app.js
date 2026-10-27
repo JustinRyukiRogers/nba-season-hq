@@ -1409,17 +1409,24 @@ async function fetchData() {
 }
 
 let loading = false;
-// manual: a click on the reload button; it spins long enough to see and then says what it found
+// manual: a click on the reload button. It shows a progress bar for at least a second, then a note
+// saying what it found and when the next scheduled refresh should land.
 async function refresh(first, manual) {
   if (loading) return;
   loading = true;
   const started = Date.now();
-  let note = '';
-  $('#btn-reload').classList.add('spin');
+  let note = null;
+  const btn = $('#btn-reload');
+  btn.classList.add('spin');
+  btn.disabled = true;
+  if (manual) loadbar('start');
   try {
     const d = await fetchData();
     const changed = !S.data || d.generated !== S.data.generated;
-    note = changed ? 'New data loaded' : 'Already up to date';
+    note = changed
+      ? ['good', 'New data loaded', 'Refreshed at ' + timeLabel(d.generated)]
+      : ['', 'Already up to date', 'Last refresh ' + timeLabel(d.generated) + ' · ' + (d.generated + 20 * 60 > Date.now() / 1000
+          ? 'next one due around ' + timeLabel(d.generated + 20 * 60) : 'the next scheduled one is late')];
     S.data = d;
     if (changed) {
       if (first) S.prev = getJSON('hq.seen');
@@ -1435,25 +1442,36 @@ async function refresh(first, manual) {
     } else if (!S.data) {
       $('#view').innerHTML = `<div class="banner bad">Could not load the data: ${esc(e.message)}. Try again in a minute.</div>`;
     }
-    note = 'Could not check';
+    note = ['bad', 'Could not check', e.message];
   } finally {
-    if (manual) await new Promise(r => setTimeout(r, Math.max(0, 700 - (Date.now() - started))));
+    if (manual) await new Promise(r => setTimeout(r, Math.max(0, 1200 - (Date.now() - started))));
     loading = false;
-    $('#btn-reload').classList.remove('spin');
-    if (manual && note && S.data) flashFresh(note);
+    btn.classList.remove('spin');
+    btn.disabled = false;
+    if (manual) {
+      loadbar('done');
+      if (note && S.data) toast(...note);
+    }
   }
 }
 
-let flashTimer = null;
-function flashFresh(note) {
-  const el = $('#fresh');
-  freshness();
-  el.textContent = note + ' · ' + el.textContent;
-  el.classList.remove('flash');
-  void el.offsetWidth;          // restart the animation on repeat clicks
-  el.classList.add('flash');
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { el.classList.remove('flash'); freshness(); }, 3000);
+function loadbar(step) {
+  const el = $('#loadbar');
+  el.className = 'loadbar';
+  void el.offsetWidth;          // restart the transition
+  el.classList.add(step === 'start' ? 'run' : 'done');
+}
+
+let toastTimer = null;
+function toast(kind, head, sub) {
+  const el = $('#toast');
+  el.className = 'toast ' + kind;
+  el.innerHTML = `<b>${esc(head)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
+  el.hidden = false;
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show'); setTimeout(() => { el.hidden = true; }, 300); }, 4000);
 }
 
 function showLock(msg) {
