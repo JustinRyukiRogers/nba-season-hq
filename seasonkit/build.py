@@ -664,11 +664,12 @@ def summary(data):
         print("\nstreams on a hunch (%s; net vs the top stream):" % data["hunches"]["days"][0])
         for r in data["hunches"]["list"]:
             print("  %-24s %+5.0f (%+.0f)  %s" % (pl[str(r["id"])]["name"], r["net"], r["vs_top"], "; ".join(r["signs"])))
-    print("\ntrade ideas (your gain in season lineup points; theirs on ESPN's numbers):")
+    print("\ntrade ideas (your gain in season lineup points; theirs on looks, next 3 weeks, season here):")
     for t in data["trades"]["list"][:6]:
         names = lambda ids: " + ".join(pl[str(i)]["name"] for i in ids)
-        print("  %-4s give %s, get %s: %+d (them %+d ESPN, %+d here)" % (
-            lg["teams"][str(t["team"])]["abbrev"], names(t["give"]), names(t["get"]), t["gain"], t["their_espn"], t["their_gain"]))
+        print("  %-4s give %s, get %s: %+d (them %+d looks, %+d next 3 weeks, %+d season here) [%s]" % (
+            lg["teams"][str(t["team"])]["abbrev"], names(t["give"]), names(t["get"]), t["gain"], t["their_looks"],
+            t["their_near"], t["their_gain"], ", ".join(a["kind"] for a in t["args"])))
     print("\nbest free agents (rest-of-season value):")
     for row in data["upgrades"]["list"][:8]:
         p = pl[str(row["id"])]

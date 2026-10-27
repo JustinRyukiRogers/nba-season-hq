@@ -896,36 +896,44 @@ function tradeCard(t) {
     <p class="small" style="margin:6px 0 0">${verdict}</p>${sides}${takesFor(ids).map(takeBlock).join('')}</div>`;
 }
 
+// Each idea carries why the other manager might say yes (t.args): kinds below. He is assumed to judge on what he sees
+// (this season's scoring against last season's), and on holes in his lineup now, not on ESPN's projections.
+const PITCH = { sell_high: ['Sell high', 'up'], buy_low: ['Buy low', 'up'], cover: ['Injury cover', ''], depth: ['Depth', ''], fair: ['Fair on looks', 'muted'] };
 function viewTradeIdeas() {
   const d = S.data, T = d.trades;
   if (!T) return '<div class="empty">This view fills in after the next refresh.</div>';
-  const out = [`<p class="lead small">Trades that add to your daily lineups over the rest of the season (playoff weeks count 1.5×), where the other team
-    comes out ahead on <b>ESPN's projections</b>, the numbers ESPN's trade screen shows them, counted above a waiver pickup. 1-for-1, 2-for-1 and 1-for-2:
-    a trade that opens a roster spot fills it with the best free agent, and one that leaves a player too many drops your lowest-valued one.</p>`];
-  out.push(`<div class="banner warn small">These ideas come from where this dashboard and ESPN disagree about a player. The dashboard's numbers start from your
-    draft board, which beat ESPN's list in replays of past drafts but is not yet tested in season. Until a few weeks of games are in, read them as the
-    board's opinion against ESPN's.</div>`);
+  const out = [`<p class="lead small">Trades that add to your daily lineups over the rest of the season (playoff weeks count 1.5×) and that give the
+    other manager a reason to say yes. He isn't assumed to go by ESPN's projections. He sees <b>this season's scoring against last season's</b>
+    (a player out for weeks counts for less), and <b>holes in his lineup right now</b>. Each idea says which lever it pulls: selling high on a hot start,
+    buying low on a slow one or an injury, covering a starter he has out, or depth.</p>`];
+  out.push(`<div class="banner warn small">How managers here judge trades is a guess, not tested: there is no record of what they accept.
+    Read the pitch, then judge the manager. Your gain uses the dashboard's numbers, which are tested on past seasons.</div>`);
   if (!T.list.length) {
-    out.push('<div class="card muted">No trade found that helps you and that the other team should accept.</div>');
+    out.push('<div class="card muted">No trade found that helps you and gives the other team a reason to say yes.</div>');
     return out.join('');
   }
   const weeks = Math.max(1, T.weeks_left);
   for (const t of T.list) {
     const other = team(t.team);
-    const winwin = t.their_gain >= 0;
     const pills = [...t.give.map(id => pill(id, 'give')), ...t.get.map(id => pill(id, 'get'))];
     if (t.my_drop) pills.push(pill(t.my_drop, 'then drop'));
     if (t.my_add) pills.push(pill(t.my_add, 'then add'));
+    const chips = [...new Set((t.args || []).map(a => a.kind))].map(k => `<span class="chip ${(PITCH[k] || [])[1] || ''}">${esc((PITCH[k] || [k])[0])}</span>`).join(' ');
+    const pitch = (t.args || []).map(a => `<li>${esc(a.text)}</li>`).join('');
     out.push(`<div class="card">
-      <div class="t"><b>${esc(other.abbrev)}</b> <span class="muted">${esc(other.name)}</span>${winwin ? ' <span class="chip up" title="They gain on the dashboard\'s numbers too">BOTH GAIN</span>' : ''}</div>
+      <div class="t"><b>${esc(other.abbrev)}</b> <span class="muted">${esc(other.name)}</span> ${chips}</div>
       <div class="who" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${pills.join('')}</div>
+      <ul class="small" style="margin:8px 0 0;padding-left:18px">${pitch}</ul>
       <div class="tiles">
         <div class="tile"><b class="pos">${signed(t.gain)}</b><span>season points for you, about ${signed(t.gain / weeks)} a week</span></div>
-        <div class="tile"><b>${signed(t.their_espn)}</b><span>for them on ESPN's projections</span></div>
-        <div class="tile"><b class="${t.their_gain >= 0 ? '' : 'down'}">${signed(t.their_gain)}</b><span>for them on the dashboard's numbers</span></div>
+        <div class="tile"><b class="${t.their_looks >= 0 ? '' : 'down'}">${signed(t.their_looks)}</b><span>for them on looks (this season and last)</span></div>
+        <div class="tile"><b class="${t.their_near >= 0 ? '' : 'down'}">${signed(t.their_near)}</b><span>their lineups, next three weeks</span></div>
+        <div class="tile"><b class="${t.their_gain >= 0 ? '' : 'down'}">${signed(t.their_gain)}</b><span>for them over the season, our numbers</span></div>
       </div></div>`);
   }
   out.push(`<p class="small muted">Your gain is the change in points from your best daily lineups for the rest of the season, simulated as on the Week tab.
+    An idea is listed when it looks even or better to them and doesn't weaken their lineups over the next three weeks, or when it adds 15+ points to those
+    lineups and costs them at most a tenth of what they give on looks. Asking for the best player in a deal takes a clear premium on looks unless he is hurt.
     No one is racing you for a trade, so these are optional; every week you wait is a week of the gain gone${T.deadline ? `. Trade deadline: ${esc(new Date(T.deadline * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: TZ }))} ET` : ''}.
     One player of yours appears in at most three ideas.</p>`);
   return out.join('');

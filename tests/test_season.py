@@ -416,6 +416,25 @@ def test_trade_helpers():
     assert advice.espn_value(star, 25.0) > 2 * advice.espn_value(mid, 25.0), "two middling players are not a star"
 
 
+def test_trade_pitch():
+    hot = player(1, fppg=30.0)
+    hot["stats"] = {"season": [8, 34, 40.0], "last": [70, 34, 30.0]}
+    assert advice.gut_per_game(hot) == 35.0, "this season's scoring shrunk halfway to last season's after 8 games"
+    rookie = player(2)
+    rookie["stats"] = {"season": [0, 0, 0], "proj": [70, 30, 22.0]}
+    assert advice.gut_per_game(rookie) == 22.0, "no record: where he was drafted (ESPN's preseason number)"
+    cold = player(3, fppg=40.0)
+    cold["stats"] = {"season": [4, 30, 28.0]}
+    hurt = player(4, fppg=32.0, out=True, back="2026-12-20")
+    hurt["pos"], hot["pos"] = ["SG"], ["SG", "SF"]
+    players = {1: hot, 3: cold, 4: hurt}
+    cal = type("C", (), {"today": date(2026, 11, 1)})()
+    kinds = [a["kind"] for a in advice.trade_args(players, [3, 4], [1], [3], 40.0, cal)]
+    assert kinds == ["sell_high", "buy_low", "cover"], "hot player sent, cold one got, their SG out and yours plays SG: %s" % kinds
+    assert [a["kind"] for a in advice.trade_args(players, [3], [1], [3], 0.0, cal)] == ["sell_high", "buy_low"], \
+        "no lineup gain for them now: no cover argument"
+
+
 
 def test_league_moves():
     start = date(2026, 11, 2)

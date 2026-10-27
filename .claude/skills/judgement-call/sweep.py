@@ -122,9 +122,11 @@ for m in d["plan"]["moves"]:
 
 section("TRADE IDEAS (top 2)")
 for t in d["trades"]["list"][:2]:
-    print("\n  with %s: give %s, get %s: +%d season points here, them %+d on ESPN" % (
+    print("\n  with %s: give %s, get %s: +%d season points here; them %+d on looks, %+d next 3 weeks, %+d season" % (
         d["league"]["teams"][str(t["team"])]["abbrev"], " + ".join(map(name, t["give"])), " + ".join(map(name, t["get"])),
-        t["gain"], t["their_espn"]))
+        t["gain"], t["their_looks"], t["their_near"], t["their_gain"]))
+    for a in t["args"]:
+        print("    pitch (%s): %s" % (a["kind"], a["text"]))
     for pid in t["give"] + t["get"]:
         context(pid, "give" if pid in t["give"] else "get")
 

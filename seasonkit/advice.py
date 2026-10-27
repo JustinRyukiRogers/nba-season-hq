@@ -38,6 +38,20 @@ TRADE_SAMPLES = 60           # simulated days per lineup; every trade is scored 
 TRADE_MIN_GAIN = 100.0       # rest-of-season lineup points (playoff weeks 1.5x) before a trade is listed
 TRADE_SHOW, TRADE_PER_TEAM, TRADE_PER_PLAYER = 10, 3, 3
 TRADE_ACTION_GAIN = 250.0    # a trade idea this good goes on the to-do list
+# How the other manager is assumed to judge a trade: not ESPN's projections but what he sees, this
+# season's points a game shrunk toward last season's (his reputation), and whether it fixes a hole in
+# his lineups now. Judgment calls, untested: there is no record of what managers here accept.
+GUT_GAMES = 8.0              # this-season games that count as much as last season's points a game
+NEED_DAYS = 21               # "now" for a manager: his lineups over the next three weeks
+NEED_MIN = 15.0              # lineup points over those weeks that make a trade fix a hole
+LOOKS_SLACK = 0.10           # share of what he gives up he will let go on looks when it fixes a hole
+HOT, COLD = 1.15, 0.85       # this season against our rest-of-season number: sell high / buy low
+ARG_MIN_GAMES = 3            # this-season games before hot or cold counts
+COVER_OUT_DAYS = 7           # a teammate out this long (or with no date) is a hole to fill
+COVER_FPPG = 25.0            # ...if he is a starter's level
+INJURED_LOOKS = 0.7          # a player out for weeks is worth this share on looks: a manager discounts what he can't use
+INJURED_LOOKS_DAYS = 14
+STAR_PREMIUM = 0.10          # a manager giving up the best player in the deal wants this much more on looks
 LEAGUE_MOVES_SHOW = 80       # the league's latest moves (trades, claims, pickups) on the Trades tab
 LEAGUE_MOVES_JUDGED = 30     # of those, the latest non-trades whose lineup change is simulated
 LEAGUE_TRADE_RECENT = 2 * 86400  # a move this fresh whose players are not on their new rosters yet is flagged
@@ -635,14 +649,78 @@ def after_trade(team, give, get, players, key, refill):
     return new
 
 
+def gut_per_game(p):
+    """Points a game as another manager sees him: this season's, shrunk toward last season's (his
+    reputation; ESPN's preseason number for a player without one, which is where he was drafted)."""
+    st = p["stats"]
+    last = st.get("last")
+    rep = last[2] if last and last[0] >= 20 else espn_per_game(p)
+    gp, fp = (st.get("season") or [0, 0, 0])[0], (st.get("season") or [0, 0, 0])[2]
+    return (gp * fp + GUT_GAMES * rep) / (gp + GUT_GAMES)
+
+
+def trade_args(players, theirs, give, get, near, calendar):
+    """Why the other manager might say yes, as he would see it: [{kind, text}]. Kinds: sell_high (a
+    player you give is scoring well above what we expect from him), buy_low (one you get is well below,
+    or out for a short while), cover (he has a starter out at a position you send, and the trade adds
+    to his lineups over the next weeks), depth (two healthy players for one, the same), fair (none of
+    those, but it looks even or better on this season's and last season's scoring)."""
+    out = []
+    n = lambda pid: players[pid]["name"]
+    for pid in give:
+        p = players[pid]
+        gp, fp = (p["stats"].get("season") or [0, 0, 0])[0], (p["stats"].get("season") or [0, 0, 0])[2]
+        if gp >= ARG_MIN_GAMES and fp >= HOT * p["ros"]["fppg"]:
+            out.append({"kind": "sell_high", "text": "%s is scoring %.1f a game in %d games, %.0f%% above the %.1f we expect from here." % (
+                n(pid), fp, gp, 100 * (fp / p["ros"]["fppg"] - 1), p["ros"]["fppg"])})
+    for pid in get:
+        p = players[pid]
+        gp, fp = (p["stats"].get("season") or [0, 0, 0])[0], (p["stats"].get("season") or [0, 0, 0])[2]
+        if gp >= ARG_MIN_GAMES and fp <= COLD * p["ros"]["fppg"]:
+            out.append({"kind": "buy_low", "text": "%s is at %.1f a game in %d games against the %.1f we expect from here: a slow start his manager may be tired of." % (
+                n(pid), fp, gp, p["ros"]["fppg"])})
+        elif p["ros"]["out"] and p["ros"]["back"]:
+            out.append({"kind": "buy_low", "text": "%s is out until about %s, so his manager gets nothing from him now; you can wait." % (
+                n(pid), parse_day(p["ros"]["back"]).strftime("%b %-d"))})
+    if near >= NEED_MIN:
+        holes = []
+        for pid in theirs:
+            q = players[pid]
+            if pid in get or not q["ros"]["out"] or q["ros"]["fppg"] < COVER_FPPG:
+                continue
+            back = q["ros"]["back"]
+            if back and (parse_day(back) - calendar.today).days < COVER_OUT_DAYS:
+                continue
+            fits = [g for g in give if set(players[g]["pos"]) & set(q["pos"]) and not players[g]["ros"]["out"]]
+            if fits:
+                holes.append("%s (%s) is out%s, and %s %s %s" % (
+                    q["name"], "/".join(q["pos"]), " until about " + parse_day(back).strftime("%b %-d") if back else " with no date",
+                    " and ".join(n(g) for g in fits), "play" if len(fits) > 1 else "plays",
+                    "/".join(x for x in q["pos"] if any(x in players[g]["pos"] for g in fits))))
+        if holes:
+            out.append({"kind": "cover", "text": "%s. It adds about %.0f points to their lineups over the next three weeks." % ("; ".join(holes[:2]), near)})
+        elif len(give) > len(get):
+            healthy = all(not players[g]["ros"]["out"] for g in give)
+            out.append({"kind": "depth", "text": "%s for one: about %.0f more points in their lineups over the next three weeks." % (
+                "Two healthy players" if healthy else "Two players", near)})
+    if not out:
+        out.append({"kind": "fair", "text": "Nothing pushes them, but on this season's scoring and last season's it looks even or better for them."})
+    return out
+
+
 def trade_ideas(league, players, me, calendar):
     """Trades with each other team that add to your simulated daily lineups over the rest of the
-    season (playoff weeks 1.5x), and that the other manager should accept on the numbers they see:
-    ESPN's projections, counted above a waiver pickup (espn_value). 1-for-1, 2-for-1 and 1-for-2. A quick screen on values picks the
-    candidates; the best per team are then re-scored with the lineup simulation for both sides."""
+    season (playoff weeks 1.5x) and that the other manager has a reason to take. He is not assumed to
+    read ESPN's projections: he sees this season's scoring against a player's reputation (gut_per_game),
+    and holes in his lineup now. A trade qualifies when it looks even or better to him on those numbers,
+    and leaves his lineups no worse over the next NEED_DAYS days (within NEED_MIN), or when it adds
+    NEED_MIN+ points to them and costs him at most LOOKS_SLACK of what he gives on looks. Each idea carries its arguments (trade_args). 1-for-1,
+    2-for-1 and 1-for-2; a quick screen on values picks the candidates, then the lineup simulation
+    scores both sides."""
     if calendar.today > calendar.end:
         return {"list": [], "weeks_left": 0}
     days = calendar.days_left()
+    near_days = days[:NEED_DAYS]
     starting = league["starting"]
     teams = {int(tid): [e["id"] for e in t["roster"] if e["id"] in players] for tid, t in league["teams"].items()}
     healthy = sorted((p for p in free_agents(players, instant_only=True) if not p["ros"]["out"]),
@@ -652,14 +730,18 @@ def trade_ideas(league, players, me, calendar):
     def val(pid):
         return players[pid]["ros"]["value"]
 
-    espn_repl = sorted((espn_per_game(p) for p in healthy), reverse=True)
-    espn_repl = espn_repl[min(len(espn_repl) - 1, REPLACEMENT_FA_RANK - 1)] if espn_repl else 0.0
+    gut_repl = sorted((gut_per_game(p) for p in healthy), reverse=True)
+    gut_repl = gut_repl[min(len(gut_repl) - 1, REPLACEMENT_FA_RANK - 1)] if gut_repl else 0.0
 
-    def espn(pid):
-        return espn_value(players[pid], espn_repl)
+    def gut(pid):
+        """Rest-of-season worth on looks, above a waiver pickup, over the games he should play; a
+        player out for weeks is discounted further (INJURED_LOOKS)."""
+        r = players[pid]["ros"]
+        hurt = r["out"] and (not r["back"] or (parse_day(r["back"]) - calendar.today).days >= INJURED_LOOKS_DAYS)
+        return (gut_per_game(players[pid]) - gut_repl) * r["games"] * (INJURED_LOOKS if hurt else 1.0)
 
-    def sim(ids):
-        return project_days(ids, days, players, starting, calendar, samples=TRADE_SAMPLES, weighted=True)[0]
+    def sim(ids, span=None):
+        return project_days(ids, span or days, players, starting, calendar, samples=TRADE_SAMPLES, weighted=True)[0]
 
     mine = teams[me]
     base_me = sim(mine)
@@ -668,7 +750,7 @@ def trade_ideas(league, players, me, calendar):
     for tid, theirs in teams.items():
         if tid == me or not theirs:
             continue
-        their_espn = sum(espn(x) for x in theirs)
+        their_gut = sum(gut(x) for x in theirs)
         shapes = [(g, t) for g in combinations(mine, 1) for t in combinations(theirs, 1)]
         shapes += [(g, t) for g in combinations(mine, 2) for t in combinations(theirs, 1)]
         shapes += [(g, t) for g in combinations(mine, 1) for t in combinations(theirs, 2)]
@@ -677,21 +759,30 @@ def trade_ideas(league, players, me, calendar):
             dv = sum(val(x) for x in after_trade(mine, give, get, players, val, refill)) - my_val
             if dv < TRADE_SCREEN_FLOOR:
                 continue
-            de = sum(espn(x) for x in after_trade(theirs, get, give, players, espn, refill)) - their_espn
-            if de < 0:
+            looks = sum(gut(x) for x in after_trade(theirs, get, give, players, gut, refill)) - their_gut
+            if looks < -LOOKS_SLACK * max(1.0, sum(max(0.0, gut(x)) for x in get)):
                 continue
-            screened.append((dv, give, get, de))
+            star = max(give + get, key=lambda x: gut_per_game(players[x]))
+            if star in get and not players[star]["ros"]["out"] and looks < STAR_PREMIUM * gut(star):
+                continue          # he gives up the best player in the deal: it has to look clearly better
+            screened.append((dv, give, get, looks))
         screened.sort(key=lambda s: -s[0])
-        base_them = sim(theirs) if screened else 0.0
+        if not screened:
+            continue
+        base_them, base_near = sim(theirs), sim(theirs, near_days)
         rows = []
-        for dv, give, get, de in screened[:TRADE_SCREEN]:
+        for dv, give, get, looks in screened[:TRADE_SCREEN]:
             new_me = after_trade(mine, give, get, players, val, refill)
             gain = sim(new_me) - base_me
             if gain < TRADE_MIN_GAIN:
                 continue
             new_them = after_trade(theirs, get, give, players, val, refill)
+            near = sim(new_them, near_days) - base_near
+            if not (near >= NEED_MIN or (looks >= 0 and near > -NEED_MIN)):
+                continue          # neither fixes a hole now nor looks fair without making him worse now
             rows.append({"team": tid, "give": list(give), "get": list(get), "gain": round(gain),
-                         "their_gain": round(sim(new_them) - base_them), "their_espn": round(de),
+                         "their_gain": round(sim(new_them) - base_them), "their_near": round(near), "their_looks": round(looks),
+                         "args": trade_args(players, theirs, give, get, near, calendar),
                          "my_drop": next((x for x in mine if x not in new_me and x not in give), None),
                          "my_add": next((x for x in new_me if x not in mine and x not in get), None)})
         rows.sort(key=lambda r: -r["gain"])
@@ -1240,8 +1331,8 @@ def trade_action(league, players, trades):
     deadline = (" The trade deadline is %s." % clock(trades["deadline"])) if trades.get("deadline") else ""
     return {"kind": "trade", "urgency": "optional", "by": None, "give": t["give"], "get": t["get"], "title": "Trade idea with %s: %s for %s (+%.0f season points)" % (
                 other["abbrev"], names(t["give"]), names(t["get"]), t["gain"]),
-            "detail": "About %+.0f points a week for you over the %s left. They come out %+.0f on ESPN's projections, "
-                      "the numbers they will look at." % (t["gain"] / weeks, plural(weeks, "week"), t["their_espn"]),
+            "detail": "About %+.0f points a week for you over the %s left. The pitch: %s" % (
+                t["gain"] / weeks, plural(weeks, "week"), " ".join(a["text"] for a in t["args"])),
             "why": "No one is racing you for a trade, but every week you wait is a week of the gain gone.%s" % deadline}
 
 
