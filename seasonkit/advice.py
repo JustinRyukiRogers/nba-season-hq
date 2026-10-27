@@ -1065,7 +1065,7 @@ def h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan=None)
                               r["games"] * r["odds"] * players[r["id"]]["ros"]["fppg"], r["at_stake"])})
     # today, live: the score against what the lineups were projected at tip-off, and what is still in
     # play; added last but shown first (the calls above read and replace calls[0])
-    lm, lt = match["me"].get("live"), match["them"].get("live")
+    lm, lt = (match.get("me") or {}).get("live"), (match.get("them") or {}).get("live")
     if lm and lt:
         def swing(L):
             rows = sorted((r for r in L["rows"] if r[4] == "post" and r[6]), key=lambda r: r[2] - r[6])

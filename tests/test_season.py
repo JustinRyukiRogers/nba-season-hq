@@ -528,6 +528,19 @@ def test_ceiling_and_upside():
     assert (v["fppg"], v["value"]) == (23.0, 140.0) and p["ros"]["fppg"] == 20.0, "the view leaves the real numbers alone"
 
 
+def test_locked_left():
+    # a starter whose game has tipped: what is still to come, and whether he counts as a start
+    out = player(1, status="OUT", out=True)
+    assert advice.locked_left(out) == (0.0, 0.0), "ruled out, no live line: no start"
+    assert advice.locked_left(player(2)) == (0.0, 1.0), "no live line: a full start, nothing more to add"
+    dnp = dict(player(3), live={"pts": 0.0, "min": None, "state": "post", "left": 0.0})
+    assert advice.locked_left(dnp) == (0.0, 0.0), "a finished game he never got into"
+    mid = dict(player(4, fppg=30.0), live={"pts": 12.0, "min": 18.0, "state": "in", "left": 0.5})
+    assert advice.locked_left(mid) == (15.0, 1.0), "half the game left: half his points a game to come"
+    sat = dict(out, live={"pts": 0.0, "min": None, "state": "in", "left": 0.5})
+    assert advice.locked_left(sat) == (0.0, 0.0), "ruled out and not on the floor"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
