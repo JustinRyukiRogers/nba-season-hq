@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from itertools import combinations
 
-from .model import ET, REPLACEMENT_FA_RANK, best_lineup, et_date, lineup_day, parse_day, project_days
+from .model import ET, NEAR_TERM_PLAY, OUT_TAGS, REPLACEMENT_FA_RANK, best_lineup, et_date, lineup_day, parse_day, project_days
 
 STREAM_DROPS = 3          # drop candidates tried for each stream: your lowest-valued players
 STREAM_POOL = 40          # free agents tried as streams, by expected points this week
@@ -534,6 +534,22 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None, wait
             "spot": sorted(stream_spots(pick, ids, open_room(league, ids))), "open": open_room(league, ids)}
 
 
+def locked_left(p):
+    """A starter whose game has tipped: (points still expected from it, expected start). From the live
+    line when there is one: a finished game adds nothing and counts as a start only if he played; one
+    in progress adds his points a game for the share left, if he has played or is not ruled out.
+    Without a live line, a player ruled out counts nothing and anyone else a full start."""
+    out = p["ros"]["out"] or p["status"] in OUT_TAGS
+    live = p.get("live")
+    if not live:
+        return 0.0, 0.0 if out else 1.0
+    played = bool(live["min"])
+    if live["state"] == "post":
+        return 0.0, 1.0 if played else 0.0
+    plays = 1.0 if played else 0.0 if out else NEAR_TERM_PLAY
+    return plays * live["left"] * p["ros"]["fppg"], plays
+
+
 def day_lineup(ids, day, players, starting, calendar, slots_now):
     """The lineup to set on one day: the best by expected points among players whose game has not
     tipped off (slots_now: today's ESPN slots, which hold for anyone already locked). The points
@@ -556,7 +572,9 @@ def day_lineup(ids, day, players, starting, calendar, slots_now):
     owner, _ = best_lineup([(c[0], c[1] * c[2], c[3]) for c in cands], open_slots)
     pts, starts = lineup_day([c[:4] for c in cands if c[1] > 0], open_slots, str(day))
     info = {c[0]: c for c in cands}
-    rows = [[s, pid, None, None, True, None] for s, pid in locked]
+    left = {pid: locked_left(players[pid]) for _, pid in locked}
+    pts += sum(x for x, _ in left.values())
+    rows = [[s, pid, None, round(left[pid][0], 1), True, None] for s, pid in locked]
     for i, s in enumerate(open_slots):
         pid = owner.get(i)
         c = info.get(pid)
@@ -570,7 +588,7 @@ def day_lineup(ids, day, players, starting, calendar, slots_now):
     crunch = max(0.0, sum(c[1] * c[2] for c in cands) - pts)
     return {"date": str(day), "first_tip": calendar.first_tip(day), "points": round(pts, 1), "slots": rows,
             "bench": bench, "idle": idle, "games": len(cands) + len(locked), "crunch": round(crunch, 1),
-            "starts": round(sum(starts.values()) + len(locked), 1)}
+            "starts": round(sum(starts.values()) + sum(st for _, st in left.values()), 1)}
 
 
 def lineup_outlook(ids, players, starting, calendar):
@@ -797,10 +815,39 @@ def matchup(league, players, me, calendar, ahead=0):
             continue
         ids = [e["id"] for e in roster(league, tid, include_ir=False)]
         pts, per_day, _ = project_days(ids, days, players, league["starting"], calendar)
+        live = None if ahead else live_today(league, players, tid, calendar)
+        if live and per_day and per_day[0][0] == str(calendar.today):   # today's games already under way
+            pts += live["left"]
+            d0, p0, s0 = per_day[0]
+            per_day[0] = (d0, round(p0 + live["left"], 1), round(s0 + live["starts"], 1))
         out[side] = {"team": tid, "score": round(score[tid] or 0.0, 1), "remaining": round(pts, 1),
                      "projected": round((score[tid] or 0.0) + pts, 1),
-                     "starts": round(sum(n for _, _, n in per_day), 1), "by_day": per_day}
+                     "starts": round(sum(n for _, _, n in per_day), 1), "by_day": per_day, "live": live}
     return out
+
+
+def live_today(league, players, tid, calendar):
+    """Today's starters whose games have tipped, as they stand -> {today: points so far, left: points
+    still expected from games in progress, starts, expected (what they were projected at tip-off),
+    rows: [[pid, slot, points, minutes, state, detail, expected, left]]}, or None before the first tip."""
+    rows = []
+    for e in roster(league, tid, include_ir=False, today=True):
+        p = players.get(e["id"])
+        g = p and calendar.game_on(p["team"], calendar.today)
+        if not g or g["tip"] > calendar.now or e["slot"] not in league["starting"]:
+            continue
+        live = p.get("live") or {}
+        left, start = locked_left(p)
+        out = p["ros"]["out"] or p["status"] in OUT_TAGS
+        expected = (0.0 if out and not live.get("min") else NEAR_TERM_PLAY) * p["ros"]["fppg"]
+        rows.append([p["id"], e["slot"], live.get("pts", 0.0), live.get("min"), live.get("state", "post"),
+                     live.get("detail"), round(expected, 1), round(left, 1)])
+    if not rows:
+        return None
+    rows.sort(key=lambda r: league["starting"].index(r[1]))
+    return {"today": round(sum(r[2] for r in rows), 1), "left": round(sum(r[7] for r in rows), 1),
+            "starts": round(sum(locked_left(players[r[0]])[1] for r in rows), 1),
+            "expected": round(sum(r[6] for r in rows), 1), "rows": rows}
 
 
 # Matchup calls. A margin within this share of their projected total is a toss-up. A guess, untested:
@@ -1016,6 +1063,31 @@ def h2h_calls(players, match, h, calendar, me_pts, them_pts, planned, plan=None)
                               name(players, r["id"]), r["games"], "" if r["games"] == 1 else "s", round(100 * r["odds"])),
                           "why": "If he sits every game, about %d expected points come off their total; if he plays them all, about %d more go on." % (
                               r["games"] * r["odds"] * players[r["id"]]["ros"]["fppg"], r["at_stake"])})
+    # today, live: the score against what the lineups were projected at tip-off, and what is still in
+    # play; added last but shown first (the calls above read and replace calls[0])
+    lm, lt = match["me"].get("live"), match["them"].get("live")
+    if lm and lt:
+        def swing(L):
+            rows = sorted((r for r in L["rows"] if r[4] == "post" and r[6]), key=lambda r: r[2] - r[6])
+            out = []
+            if rows and rows[0][2] - rows[0][6] <= -8:
+                out.append("%s %d (projected %d)" % (name(players, rows[0][0]), rows[0][2], rows[0][6]))
+            if rows and rows[-1][2] - rows[-1][6] >= 8:
+                out.append("%s %d (projected %d)" % (name(players, rows[-1][0]), rows[-1][2], rows[-1][6]))
+            return "; ".join(out)
+
+        def in_play(L):
+            rows = [r for r in L["rows"] if r[4] != "post"]
+            return ", ".join("%s %d, about %d to come" % (name(players, r[0]), r[2], r[7]) for r in rows) or "nobody"
+        lead = (match["me"]["score"] or 0) - (match["them"]["score"] or 0)
+        done = all(r[4] == "post" for r in lm["rows"] + lt["rows"])
+        calls.insert(0, {"urgency": "fyi", "title": "Live: %s %d%s" % ("up" if lead >= 0 else "down", abs(lead),
+                                                                        ", today's games done" if done else ""),
+                         "why": "Today you have %d from your starters (projected %d at tip-off), they have %d (projected %d). %s%s"
+                                "Still playing: you %s; them %s." % (
+                                    lm["today"], lm["expected"], lt["today"], lt["expected"],
+                                    "Yours: %s. " % swing(lm) if swing(lm) else "", "Theirs: %s. " % swing(lt) if swing(lt) else "",
+                                    in_play(lm), in_play(lt))})
     return calls
 
 

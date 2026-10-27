@@ -122,13 +122,15 @@ def normalize_league(raw, swid=None):
             "adds": (t.get("transactionCounter") or {}).get("matchupAcquisitionTotals") or {},
             "roster": roster_entries(t),
         }
-    matchups = []
+    matchups, live = [], {}
     for m in raw.get("schedule", []):
         home, away = m.get("home") or {}, m.get("away") or {}
         matchups.append({"period": m["matchupPeriodId"], "home": home.get("teamId"), "away": away.get("teamId"),
                          "home_pts": home.get("totalPointsLive", home.get("totalPoints")),
                          "away_pts": away.get("totalPointsLive", away.get("totalPoints")),
                          "winner": m.get("winner"), "playoff": m.get("playoffTierType") != "NONE"})
+        live.update(live_lines(home, raw.get("scoringPeriodId")))
+        live.update(live_lines(away, raw.get("scoringPeriodId")))
     status = raw.get("status") or {}
     sched = s["scheduleSettings"]
     per_day = acq.get("matchupLimitPerScoringPeriod")
@@ -141,8 +143,47 @@ def normalize_league(raw, swid=None):
         "final_period": status.get("finalScoringPeriod"), "period": status.get("currentMatchupPeriod"),
         "scoring_period": raw.get("scoringPeriodId"),
         "trade_deadline": (s.get("tradeSettings") or {}).get("deadlineDate"),
-        "teams": teams, "matchups": matchups,
+        "teams": teams, "matchups": matchups, "live": live,
     }
+
+
+def live_lines(side, scoring_period):
+    """Today's points and minutes for each player on one side of a matchup (mMatchupScore) -> {pid:
+    [points, minutes or None]}; minutes stay None until he has a line for the day (not yet on, or
+    a DNP)."""
+    out = {}
+    for e in (side.get("rosterForCurrentScoringPeriod") or {}).get("entries") or []:
+        pe = e.get("playerPoolEntry") or {}
+        line = next((s for s in (pe.get("player") or {}).get("stats") or []
+                     if s.get("scoringPeriodId") == scoring_period and s.get("statSourceId") == 0), None)
+        mins = ((line or {}).get("stats") or {}).get(MIN)
+        out[e["playerId"]] = [pe.get("appliedStatTotal") or 0.0, mins]
+    return out
+
+
+def attach_live(league, players, calendar, problems):
+    """Each player with a game today that has tipped gets p["live"]: {pts, min, state (pre, in or post),
+    left (share of the game still to play), detail}, from the matchup lines and the NBA scoreboard."""
+    started = [g for (team, day), g in calendar.by_day.items() if day == calendar.today and g["tip"] <= calendar.now]
+    if not started:
+        return
+    try:
+        board = pull.scoreboard(calendar.today)
+    except Exception as err:
+        problems.append("live scoreboard failed (%s); games in progress count as finished" % type(err).__name__)
+        board = {}
+    for pid, (pts, mins) in league["live"].items():
+        p = players.get(pid)
+        g = p and calendar.game_on(p["team"], calendar.today)
+        if not g or g["tip"] > calendar.now:
+            continue
+        s = board.get(g["id"]) or {"state": "post", "period": 4, "clock": 0.0, "detail": None}
+        left = 0.0
+        if s["state"] == "in":       # regulation is 4 x 12 minutes; overtime counts what is left of it
+            left = max(0.0, (max(0, 4 - s["period"]) * 720 + s["clock"]) / 2880) if s["period"] <= 4 else s["clock"] / 2880
+        elif s["state"] == "pre":
+            left = 1.0
+        p["live"] = {"pts": round(pts, 1), "min": mins, "state": s["state"], "left": round(left, 3), "detail": s["detail"]}
 
 
 def _split(stats, key_id):
@@ -305,6 +346,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     fas = [p for p in players.values() if p["owner"] == 0]
     replacement = model.replacement_level(fas)
     model.finish_values(players.values(), replacement)
+    attach_live(league, players, calendar, problems)
 
     # schedule: the next week of games for every player in the pool, for cards and stream lists
     horizon = now + 8 * 86400

@@ -188,6 +188,18 @@ def schedule(season=SEASON):
     return sorted(games.values(), key=lambda g: g["tip"])
 
 
+def scoreboard(day):
+    """One day's NBA games as they stand -> {game id: {state: pre, in or post, period, clock (seconds left
+    in the period), detail (ESPN's short line, e.g. "10:27 - 3rd")}}."""
+    data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/scoreboard", {"dates": day.strftime("%Y%m%d")}, timeout=20)
+    out = {}
+    for e in data.get("events") or []:
+        s = e.get("status") or {}
+        out[int(e["id"])] = {"state": (s.get("type") or {}).get("state"), "period": s.get("period") or 0,
+                             "clock": s.get("clock") or 0.0, "detail": (s.get("type") or {}).get("shortDetail")}
+    return out
+
+
 def news_for(player_id, limit=8):
     """A player's latest fantasy news -> [{at, kind, headline, story}]. kind "note" is a short
     update with its fantasy take; "article" is a longer ESPN piece that mentions him."""

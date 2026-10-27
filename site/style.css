@@ -394,6 +394,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .h2h-name { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .h2h-big { font-size: clamp(34px, 5vw, 52px); font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .h2h-sub { font-size: 12px; color: var(--ink-2); }
+.h2h-live { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+.fo-left { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 2px; }
 .h2h-mid { text-align: center; padding-bottom: 6px; }
 .h2h-margin { display: inline-block; font-size: 20px; font-weight: 800; padding: 4px 14px; border-radius: 999px; letter-spacing: -0.01em; }
 .h2h-margin.up { color: #fff; background: var(--me); box-shadow: 0 6px 18px -8px var(--me); }

@@ -254,6 +254,7 @@ function h2hHero() {
       ${vseg(cls)}
       <div class="h2h-big">${n0(V.total)}</div>
       <div class="h2h-sub">${live ? `${n0(score)} so far + ${n0(V.points)} to come` : 'projected'} · <b>${n1(V.starts)}</b> expected starts</div>
+      ${m[cls] && m[cls].live ? `<div class="h2h-live" data-tip="Today's starters already in their games: points so far, against what they were projected at tip-off">today <b>${n0(m[cls].live.today)}</b>${m[cls].live.left >= 0.5 ? ` +${n0(m[cls].live.left)} to come` : ''} · projected ${n0(m[cls].live.expected)}</div>` : ''}
       <div class="h2h-form" data-tip="The same expected starts at each player's points a game so far this season (2-3 games each: noisy). The projections blend that with preseason numbers.">at this season's pace <b>${n0(V.form)}</b></div></div>`;
   const how = `${which.me === 'moves' ? (H.views.me.moves.carried ? 'your roster after this week\'s moves' : 'your suggested moves') : 'your lineup as is'}
     vs ${which.them === 'moves' ? 'their best streams' : 'theirs as is'}`;
@@ -270,14 +271,16 @@ function h2hHero() {
   // day strip: mirrored bars, you up in blue, them down in red
   const days = A.lineups.map((a, i) => [a, B.lineups[i]]);
   if (!S.hd || !days.some(([a]) => a.date === S.hd)) S.hd = days.length ? days[0][0].date : null;
-  const top = Math.max(1, ...days.flatMap(([a, b]) => [a.points, b.points]));
+  // today, once games are under way: the points scored so far plus what is still expected
+  const dayPts = (lu, side) => lu.date === d.calendar.today && !m.ahead && m[side].live ? m[side].live.today + lu.points : lu.points;
+  const top = Math.max(1, ...days.flatMap(([a, b]) => [dayPts(a, 'me'), dayPts(b, 'them')]));
   const strip = days.map(([a, b]) => {
-    const diff = a.points - b.points;
+    const x = dayPts(a, 'me'), y = dayPts(b, 'them'), diff = x - y;
     return `<button class="h2h-day${a.date === S.hd ? ' on' : ''}" data-hd="${a.date}"
-        data-tip="${esc(dayLabel(a.date))}: you ${n0(a.points)} from ${n1(a.starts)} starts, ${esc(opp.abbrev)} ${n0(b.points)} from ${n1(b.starts)}">
+        data-tip="${esc(dayLabel(a.date))}: you ${n0(x)} from ${n1(a.starts)} starts, ${esc(opp.abbrev)} ${n0(y)} from ${n1(b.starts)}">
       <span class="dn">${wkday(a.date)}${a.date === d.calendar.today ? ' <em>today</em>' : ''}</span>
-      <span class="db"><i class="me" style="height:${(42 * a.points / top).toFixed(0)}px"></i></span>
-      <span class="db down"><i class="them" style="height:${(42 * b.points / top).toFixed(0)}px"></i></span>
+      <span class="db"><i class="me" style="height:${(42 * x / top).toFixed(0)}px"></i></span>
+      <span class="db down"><i class="them" style="height:${(42 * y / top).toFixed(0)}px"></i></span>
       <span class="dd ${diff >= 0.5 ? 'up' : diff <= -0.5 ? 'down' : ''}">${signed(diff)}</span>
       <span class="ds">${n1(a.starts)} v ${n1(b.starts)}</span></button>`;
   }).join('');
@@ -296,17 +299,27 @@ function h2hFaceoff(m, pair, A, B) {
     const g = (P(pid).next || []).find(x => x[0] === date);
     return g ? `${g[2] ? 'vs' : '@'} ${esc(g[1])} ${timeLabel(g[3])}` : '';
   };
+  // today's starters already in their games: points so far, minutes, the game clock
+  const today = a.date === S.data.calendar.today;
+  const liveOf = side => Object.fromEntries(((today && m[side].live && m[side].live.rows) || []).map(r => [r[0], r]));
+  const LV = { me: liveOf('me'), them: liveOf('them') };
+  const liveMeta = l => l[4] === 'post' ? (l[3] ? `${esc(l[5] || 'Final')} · ${n0(l[3])} min` : 'did not play')
+    : l[4] === 'in' ? `${esc(l[5] || 'in play')} · ${l[3] ? n0(l[3]) + ' min' : 'not in yet'}` : 'tipping off';
+  const cellPts = (r, side) => { const l = r[4] && LV[side][r[1]]; return l ? l[2] + l[7] : (r[3] || 0); };
   const cell = (r, side) => {
     const [, pid, prob, pts, locked] = r;
     if (!pid) return `<div class="fo-cell ${side} empty">empty</div>`;
-    const p = P(pid);
+    const p = P(pid), l = locked && LV[side][pid];
     const odds = prob != null && prob < 0.9 && (p.status !== 'ACTIVE' || (p.inj && p.inj.status)) ? ` <span class="fo-odds" title="Chance he plays">${Math.round(prob * 100)}%</span>` : '';
-    return `<div class="fo-cell ${side}" data-pid="${pid}"><div class="fo-nm">${esc(p.name)} ${statusChip(p)}${odds}</div>
-      <div class="fo-meta">${esc(p.team)} · ${locked ? 'locked in' : game(pid, a.date)}</div>
-      <div class="fo-pts">${locked ? '<span class="muted">live</span>' : n1(pts)}</div></div>`;
+    const shown = l ? `${n0(l[2])}${l[7] >= 0.5 ? `<small class="fo-left" title="About ${n0(l[7])} more expected from the rest of his game">+${n0(l[7])}</small>` : ''}`
+      : locked ? '<span class="muted">live</span>' : n1(pts);
+    const vs = l && l[6] ? ` <span class="${l[2] + l[7] >= l[6] ? 'pos' : 'down'}" title="Projected at tip-off">/ ${n0(l[6])}</span>` : '';
+    return `<div class="fo-cell ${side}${l ? ' live' : ''}" data-pid="${pid}"><div class="fo-nm">${esc(p.name)} ${statusChip(p)}${odds}</div>
+      <div class="fo-meta">${esc(p.team)} · ${l ? liveMeta(l) + vs : locked ? 'locked in' : game(pid, a.date)}</div>
+      <div class="fo-pts">${shown}</div></div>`;
   };
   const rows = a.slots.map((r, i) => {
-    const t = b.slots[i] || [r[0]], x = r[3] || 0, y = t[3] || 0;
+    const t = b.slots[i] || [r[0]], x = cellPts(r, 'me'), y = cellPts(t, 'them');
     return `<div class="fo-row ${x > y + 0.5 ? 'win' : y > x + 0.5 ? 'lose' : ''}">${cell(r, 'me')}<div class="fo-slot">${esc(r[0])}</div>${cell(t, 'them')}</div>`;
   }).join('');
   const bench = (lu) => {
@@ -321,13 +334,15 @@ function h2hFaceoff(m, pair, A, B) {
   for (const x of (first && B.activate) || []) notes.push(`<div class="fo-note them"><span class="urg fyi">They activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
   const st = B.streams && B.streams[a.date];
   if (st) notes.push(`<div class="fo-note them"><span class="urg fyi">They could add</span> ${pill(st.id)} for ${pill(st.drop)} <span class="muted">+${n0(st.gain)}</span></div>`);
-  return `<div class="fo-head"><span class="me">You · ${n0(a.points)} <small>${n1(a.starts)} starts</small></span>
-      <span class="fo-title">${esc(dayLabel(a.date))} · best lineups</span>
-      <span class="them">${esc(opp.abbrev)} · ${n0(b.points)} <small>${n1(b.starts)} starts</small></span></div>
+  const LM = today && m.me.live, LT = today && m.them.live;
+  const head = (L, pts) => L ? `${n0(L.today)}${L.left >= 0.5 ? `<small>+${n0(L.left)}</small>` : ''}` : n0(pts);
+  return `<div class="fo-head"><span class="me">You · ${head(LM, a.points)} <small>${n1(a.starts)} starts</small></span>
+      <span class="fo-title">${esc(dayLabel(a.date))} · ${LM || LT ? 'live' : 'best lineups'}</span>
+      <span class="them">${esc(opp.abbrev)} · ${head(LT, b.points)} <small>${n1(b.starts)} starts</small></span></div>
     <div class="fo">${rows}</div>
     ${notes.length ? `<div class="fo-notes">${notes.join('')}</div>` : ''}
     <div class="fo-bench"><div><span class="lbl">Your bench with a game</span>${bench(a)}</div><div class="r"><span class="lbl">Theirs</span>${bench(b)}</div></div>
-    <p class="cap" style="margin-top:8px">Points are expected (chance he plays × points a game). Slots pair up by position only; the day is won on the totals.${a.crunch >= 1 ? ` You leave about ${n0(a.crunch)} on your bench this day.` : ''}</p>`;
+    <p class="cap" style="margin-top:8px">${LM || LT ? 'Players in their games show points so far, the rest of the game expected at his points a game (+), and his projection at tip-off. ' : ''}Points are expected (chance he plays × points a game). Slots pair up by position only; the day is won on the totals.${a.crunch >= 1 ? ` You leave about ${n0(a.crunch)} on your bench this day.` : ''}</p>`;
 }
 // The calls: the matchup's own, after the to-dos that move this matchup's points.
 function h2hCalls(m) {
