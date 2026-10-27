@@ -10,7 +10,6 @@ const S = {
 const TZ = 'America/New_York';
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
 const SLOT_ORDER = ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UT', 'BE', 'IR'];
-const STALE_MIN = 90;
 const $ = (sel, el = document) => el.querySelector(sel);
 
 // ---------- storage (best effort: private windows can refuse it) ----------
@@ -151,13 +150,39 @@ function render() {
   $('#view').innerHTML = PAGES[S.tab]();
 }
 
+// The data status in the header: when ESPN was last pulled and when the next pull is due. The refresh
+// workflow pulls every PULL_EVERY minutes (a cron-job.org timer starts it); the page loads each new
+// pull by itself, checking every minute once one is due.
+const PULL_EVERY = 20;
+const PULL_LATE = 40;           // minutes without a pull before the timer looks down
+function pullState() {
+  const g = S.data.generated, mins = (Date.now() / 1000 - g) / 60;
+  return { g, mins, next: g + PULL_EVERY * 60, state: mins < PULL_EVERY + 2 ? 'ok' : mins < PULL_LATE ? 'due' : 'late' };
+}
 function freshness() {
-  const d = S.data;
+  const { g, mins, next, state } = pullState();
   const el = $('#fresh');
-  const mins = (Date.now() / 1000 - d.generated) / 60;
-  el.textContent = 'Updated ' + timeLabel(d.generated) + ' · ' + ago(d.generated);
-  el.classList.toggle('stale', mins > STALE_MIN);
-  el.title = mins > STALE_MIN ? 'Over ' + STALE_MIN + ' minutes since the last refresh. GitHub may be skipping scheduled runs, or ESPN failed (see the Actions tab of the repo).' : '';
+  el.className = 'fresh ' + state + (el.classList.contains('flash') ? ' flash' : '');
+  el.style.setProperty('--fill', Math.min(1, mins / PULL_EVERY));
+  el.querySelector('.fresh-text').textContent = state === 'ok' ? 'Live · pulled ' + timeLabel(g) + ' · next ~' + timeLabel(next)
+    : state === 'due' ? 'Pull due · watching for it'
+    : 'No pull since ' + timeLabel(g) + ' (' + ago(g) + ')';
+}
+function freshFlash() {
+  const el = $('#fresh');
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 2500);
+}
+async function freshDetails() {
+  await refresh(false);
+  if (!S.data) return;
+  const { g, next, state } = pullState();
+  const last = 'Last pull from ESPN ' + timeLabel(g) + ' (' + ago(g) + ').';
+  if (state === 'ok') toast('good', 'Up to date', last + ' The next is due around ' + timeLabel(next) + '; the page loads it by itself.');
+  else if (state === 'due') toast('', 'A pull is due', last + ' Pulls usually land within a few minutes of the due time; the page is checking every minute.');
+  else toast('bad', 'Pulls have stopped', last + ' Pulls should come every ' + PULL_EVERY + ' minutes, so the cron-job.org timer or GitHub Actions may be down. Check the timer and the Actions tab of the repo.', 9000);
 }
 
 // ----- pages: a dashboard, then a detail page per area with its own sub-views -----
@@ -1436,50 +1461,11 @@ async function loadData(first) {
     computeChanges();
     showApp();
     render();
+    if (!first) freshFlash();
   } else {
     freshness();
   }
   return changed;
-}
-
-// The reload button: checks for data newer than what the page has. The data itself is pulled from
-// ESPN by the refresh workflow every 20 minutes (a cron-job.org timer starts it).
-async function pullNow() {
-  if (loading) return;
-  loading = true;
-  const btn = $('#btn-reload');
-  btn.classList.add('spin');
-  btn.disabled = true;
-  const started = Date.now();
-  loadbar(30);
-  try {
-    const changed = await loadData(false);
-    await sleep(Math.max(0, 1000 - (Date.now() - started)));
-    const g = S.data.generated, next = g + 20 * 60;
-    toast(changed ? 'good' : '', changed ? 'Newer data loaded' : 'No newer data yet',
-      'Last pull from ESPN ' + timeLabel(g) + ' (' + ago(g) + ')'
-      + (next > Date.now() / 1000 ? ' · next due around ' + timeLabel(next) : ' · the 20-minute refresh is overdue'));
-  } catch (e) {
-    toast('bad', 'Could not check', e.message);
-  } finally {
-    loadbar('done');
-    loading = false;
-    btn.classList.remove('spin');
-    btn.disabled = false;
-  }
-}
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-// pct: a number fills the bar to that share; 'done' fills it and fades it out
-function loadbar(pct) {
-  const el = $('#loadbar');
-  if (pct === 'done') {
-    el.className = 'loadbar done';
-    el.style.width = '';
-    return;
-  }
-  el.className = 'loadbar run';
-  el.style.width = pct + '%';
 }
 
 let toastTimer = null;
@@ -1498,7 +1484,7 @@ function showLock(msg) {
   $('#lock').hidden = false;
   $('#view').innerHTML = '';
   $('#tabs').hidden = true;
-  $('#btn-reload').hidden = true;
+  $('#fresh').hidden = true;
   $('#lock-error').hidden = !msg;
   $('#lock-error').textContent = msg || '';
   $('#lock-input').focus();
@@ -1506,7 +1492,7 @@ function showLock(msg) {
 function showApp() {
   $('#lock').hidden = true;
   $('#tabs').hidden = false;
-  $('#btn-reload').hidden = false;
+  $('#fresh').hidden = false;
 }
 
 function boot() {
@@ -1535,7 +1521,7 @@ function boot() {
     render();
     window.scrollTo(0, 0);
   });
-  $('#btn-reload').addEventListener('click', pullNow);
+  $('#fresh').addEventListener('click', freshDetails);
   $('#view').addEventListener('click', e => {
     const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],[data-hv],#lock-now');
     if (!t) return;
@@ -1586,8 +1572,13 @@ function boot() {
     refresh(true);
   });
   refresh(true);
-  setInterval(() => refresh(false), 5 * 60 * 1000);
-  setInterval(() => { if (S.data) freshness(); }, 60 * 1000);
+  // every minute: update the status; load new data every 5 minutes, or every minute once a pull is due
+  let tick = 0;
+  setInterval(() => {
+    if (!S.data) return;
+    freshness();
+    if (++tick % 5 === 0 || pullState().state !== 'ok') refresh(false);
+  }, 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
 }
 

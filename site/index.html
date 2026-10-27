@@ -10,13 +10,13 @@
 <title>Season HQ</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="bar">
   <div class="bar-main">
     <div class="title" id="title">Season HQ</div>
-    <div class="fresh" id="fresh"></div>
+    <button class="fresh" id="fresh" type="button" title="Data status: click for details" hidden><span class="fresh-dot"></span><span class="fresh-text"></span></button>
   </div>
   <nav class="tabs" id="tabs" role="tablist" hidden>
     <button data-tab="home" role="tab">Dashboard</button>
@@ -26,10 +26,6 @@
     <button data-tab="trades" role="tab">Trades</button>
     <button data-tab="league" role="tab">League</button>
   </nav>
-  <button class="icon-btn" id="btn-reload" title="Check for new data" aria-label="Check for new data" hidden>
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </button>
-  <div class="loadbar" id="loadbar" aria-hidden="true"></div>
 </header>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -51,6 +47,6 @@
 <div class="scrim" id="scrim" hidden></div>
 <script src="crypto.js"></script>
 <script src="charts.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

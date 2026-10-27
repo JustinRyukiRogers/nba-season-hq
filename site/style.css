@@ -79,19 +79,24 @@ a { color: var(--accent-ink); }
 }
 .bar-main { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fresh { color: var(--muted); font-size: 12px; }
-.fresh.stale { color: var(--warning-ink); font-weight: 600; }
-.icon-btn { padding: 6px; display: grid; place-items: center; border-radius: 50%; }
-.icon-btn.spin svg { animation: spin 0.9s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.icon-btn:disabled { opacity: 1; cursor: progress; color: var(--accent); }
-/* progress along the header's bottom edge: creeps toward 90% while loading, then fills and fades */
-.loadbar {
-  position: absolute; left: 0; bottom: -1px; height: 3px; width: 0; opacity: 0;
-  background: var(--accent); pointer-events: none;
+/* data status: a dot, the last and next pull, and a fill showing how far to the next pull */
+.fresh {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px 3px; border: 1px solid var(--line); border-radius: 999px; background: none;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
-.loadbar.run { opacity: 1; transition: width 0.6s ease-out; }
-.loadbar.done { opacity: 0; width: 100%; transition: width 0.2s ease-out, opacity 0.4s ease 0.25s; }
+.fresh:hover { color: var(--ink); border-color: var(--muted); }
+.fresh::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px;
+  width: calc(var(--fill, 0) * 100%); background: currentColor; opacity: 0.35; transition: width 1s linear;
+}
+.fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
+.fresh.due .fresh-dot { background: var(--warning-ink); animation: pulse 1.4s ease-in-out infinite; }
+.fresh.late { color: var(--warning-ink); font-weight: 600; border-color: currentColor; }
+.fresh.late .fresh-dot { background: var(--warning-ink); }
+.fresh.flash { animation: fresh-flash 2.5s ease-out; }
+@keyframes pulse { 50% { opacity: 0.3; transform: scale(0.75); } }
+@keyframes fresh-flash { 0% { background: color-mix(in srgb, var(--good) 30%, transparent); color: var(--ink); } }
 .toast {
   position: fixed; z-index: 30; right: 16px; top: calc(max(10px, env(safe-area-inset-top)) + 52px);
   max-width: min(360px, calc(100vw - 32px));
