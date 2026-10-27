@@ -1409,13 +1409,17 @@ async function fetchData() {
 }
 
 let loading = false;
-async function refresh(first) {
+// manual: a click on the reload button; it spins long enough to see and then says what it found
+async function refresh(first, manual) {
   if (loading) return;
   loading = true;
+  const started = Date.now();
+  let note = '';
   $('#btn-reload').classList.add('spin');
   try {
     const d = await fetchData();
     const changed = !S.data || d.generated !== S.data.generated;
+    note = changed ? 'New data loaded' : 'Already up to date';
     S.data = d;
     if (changed) {
       if (first) S.prev = getJSON('hq.seen');
@@ -1431,10 +1435,25 @@ async function refresh(first) {
     } else if (!S.data) {
       $('#view').innerHTML = `<div class="banner bad">Could not load the data: ${esc(e.message)}. Try again in a minute.</div>`;
     }
+    note = 'Could not check';
   } finally {
+    if (manual) await new Promise(r => setTimeout(r, Math.max(0, 700 - (Date.now() - started))));
     loading = false;
     $('#btn-reload').classList.remove('spin');
+    if (manual && note && S.data) flashFresh(note);
   }
+}
+
+let flashTimer = null;
+function flashFresh(note) {
+  const el = $('#fresh');
+  freshness();
+  el.textContent = note + ' · ' + el.textContent;
+  el.classList.remove('flash');
+  void el.offsetWidth;          // restart the animation on repeat clicks
+  el.classList.add('flash');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.classList.remove('flash'); freshness(); }, 3000);
 }
 
 function showLock(msg) {
@@ -1479,7 +1498,7 @@ function boot() {
     render();
     window.scrollTo(0, 0);
   });
-  $('#btn-reload').addEventListener('click', () => refresh(false));
+  $('#btn-reload').addEventListener('click', () => refresh(false, true));
   $('#view').addEventListener('click', e => {
     const t = e.target.closest('[data-sub],[data-wtab],[data-lu],[data-rtab],[data-ttab],[data-mkind],[data-pos],[data-who],[data-srange],[data-sper],[data-sview],[data-ssort],[data-pid],[data-goto],[data-dismiss],[data-unhide],[data-hw],[data-hd],[data-hv],#lock-now');
     if (!t) return;

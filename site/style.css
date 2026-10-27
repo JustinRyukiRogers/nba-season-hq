@@ -84,6 +84,9 @@ a { color: var(--accent-ink); }
 .icon-btn { padding: 6px; display: grid; place-items: center; border-radius: 50%; }
 .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.fresh.flash { color: var(--ink); font-weight: 600; animation: flash 3s ease-out; }
+@keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 25%, transparent); } 100% { background: transparent; } }
+.fresh { border-radius: 4px; padding: 0 4px; margin: 0 -4px; }
 
 .tabs { display: flex; gap: 2px; }
 .tabs button {
