@@ -38,6 +38,10 @@ def main():
     by = {p["name"]: p["id"] for p in P.values()}
     ids = [e["id"] for e in advice.roster(L, me, include_ir=False) if e["id"] in P]
     drops = a.drops or [P[i]["name"] for i in sorted(ids, key=lambda i: P[i]["ros"]["value"])[:5]]
+    on_ir = [d for d in drops if by[d] not in ids]
+    if on_ir:   # an IR player frees an IR slot, not a roster spot: dropping him makes no room for an add
+        print("skipped (in IR, frees no roster spot): " + ", ".join(on_ir))
+        drops = [d for d in drops if d not in on_ir]
     adds = [x.split("=") for x in a.adds]
     top = next((m["id"] for m in (data.get("plan") or {}).get("moves", []) if m["kind"] == "add"), None)
     if top and P[top]["name"] not in [x[0] for x in adds]:
