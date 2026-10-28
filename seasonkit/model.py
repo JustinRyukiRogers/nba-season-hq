@@ -50,6 +50,11 @@ FALLBACK_PRIOR_GAMES = 6.0   # players the board never valued: their own games t
 DEEP_BENCH = 12.0            # their per-game prior when ESPN does not project them
 FALLBACK_LAST_GAMES = 30.0   # games of last season's average that count as much as DEEP_BENCH
 DTD_PLAY = 0.6               # chance a day-to-day player plays his next game
+# A game the NBA's official injury report tags (it keeps apart what ESPN calls day-to-day): how often
+# a tagged player played, two seasons of the 1 PM and 5 PM ET reports (research/injury_tags.py,
+# 2026-10-28): Probable 93%, Questionable 50%, Doubtful 3%, Out 0%, the same in both seasons.
+# Available is cleared to play; he is treated as untagged.
+TAG_PLAY = {"Probable": 0.93, "Questionable": 0.5, "Doubtful": 0.03, "Out": 0.0}
 # A healthy player's next few games: the season-long share above averages in injuries still to
 # come, but in the coming week a player on no injury report rarely sits (rest days, a new knock).
 NEAR_TERM_DAYS, NEAR_TERM_PLAY = 7, 0.93
@@ -255,9 +260,13 @@ def game_odds(player, games, injury, note, today, season_end, base_share, back_s
     first_day = first_day or today
     dtd = not out and player.get("status") == "DAY_TO_DAY"
     rate = (note.get("games_rate") or 1.0)
+    tags = player.get("tags") or {}
     odds = []
     for i, g in enumerate(games):
-        if out and (over or g["date"] < back):
+        tag = TAG_PLAY.get(tags.get(str(g["date"])))
+        if tag is not None and not over:
+            odds.append((g, tag * rate, out and g["date"] < back and not tag, 1.0))
+        elif out and (over or g["date"] < back):
             odds.append((g, 0.0, True, 1.0))
         elif out:
             odds.append((g, back_share * rate * back_factor, False, back_factor))

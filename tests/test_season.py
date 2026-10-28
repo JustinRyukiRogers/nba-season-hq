@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from seasonkit import advice, model
+from seasonkit import advice, model, pull
 
 STARTING = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
 
@@ -83,6 +83,23 @@ def test_game_odds():
     assert abs(odds[2][1] - 0.85 * 0.9) < 1e-9 and odds[2][3] == 0.9
     odds = model.game_odds({"status": "DAY_TO_DAY"}, games, None, {}, today, date(2027, 3, 28), 0.8, 0.8, 1.0)
     assert odds[0][1] == model.DTD_PLAY and odds[1][1] == model.NEAR_TERM_PLAY and odds[3][1] == 0.8
+    # the official report's tag for a game beats ESPN's day-to-day, and a returning Out player's tag counts
+    tags = {"2026-11-02": "Probable", "2026-11-04": "Doubtful"}
+    odds = model.game_odds({"status": "DAY_TO_DAY", "tags": tags}, games, None, {}, today, date(2027, 3, 28), 0.8, 0.8, 1.0)
+    assert odds[0][1] == model.TAG_PLAY["Probable"] and odds[1][1] == model.TAG_PLAY["Doubtful"]
+    odds = model.game_odds({"status": "OUT", "tags": {"2026-11-02": "Questionable"}}, games, {"return": "2026-11-05"}, {},
+                           today, date(2027, 3, 28), 0.8, 0.85, 0.9)
+    assert odds[0][1] == 0.5 and not odds[0][2] and odds[1][2], "questionable to return: half a game, not an absence"
+
+
+def test_parse_report():
+    text = ("10/28/2026   07:00 (ET)   CHA@DET   Detroit Pistons     Thompson, Ausar      Probable         Injury/Illness\n"
+            "                                                         McConnell, T.J.      Out              Injury/Illness\n"
+            "                                                         Udeh, Jr., Ernest    Out              G League - Two-Way\n"
+            "10/29/2026   07:30 (ET)   GSW@MIN   Golden State        Lendeborg, Yaxel     Questionable\n")
+    r = pull.parse_report(text)
+    assert r == {"Ausar Thompson": {"2026-10-28": "Probable"}, "T.J. McConnell": {"2026-10-28": "Out"},
+                 "Ernest Udeh Jr.": {"2026-10-28": "Out"}, "Yaxel Lendeborg": {"2026-10-29": "Questionable"}}
 
 
 def test_ir_rules():

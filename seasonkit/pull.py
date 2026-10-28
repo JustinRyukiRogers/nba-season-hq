@@ -175,6 +175,68 @@ def injuries():
     return out
 
 
+REPORT_URL = "https://ak-static.cms.nba.com/referee/injury/Injury-Report_%s_%s.pdf"
+REPORT_TAGS = ("Available", "Probable", "Questionable", "Doubtful", "Out")
+REPORT_NAME = r"[^\W\d_](?:[^\W\d_]|['.,\-]| (?! ))*?"    # one space at most between words: columns are 2+ apart
+REPORT_ROW = re.compile(r"(%s, %s)\s{2,}(%s)\b" % (REPORT_NAME, REPORT_NAME, "|".join(REPORT_TAGS)))
+REPORT_GAME = re.compile(r"(\d\d)/(\d\d)/(\d{4})\s")
+REPORT_LOOKBACK = 40    # quarter hours searched back for the latest report (it is posted every 15 to 60 minutes)
+
+
+def parse_report(text):
+    """The NBA's official injury report as text (pdftotext -layout) -> {"First Last": {game day: tag}}."""
+    out, day = {}, None
+    for line in text.splitlines():
+        g = REPORT_GAME.search(line)
+        if g:
+            day = "%s-%s-%s" % (g.group(3), g.group(1), g.group(2))
+        m = REPORT_ROW.search(line)
+        if m and day:
+            last, first = m.group(1).rsplit(", ", 1)
+            out.setdefault(first + " " + last.replace(",", ""), {})[day] = m.group(2)
+    return out
+
+
+def report_text(day, stamp):
+    """One archived report as text, or None when it doesn't exist. Needs pdftotext (poppler)."""
+    import subprocess
+    import tempfile
+    import urllib.request
+    try:
+        with urllib.request.urlopen(REPORT_URL % (day.isoformat(), stamp), timeout=20) as r:
+            pdf = r.read()
+    except Exception:
+        return None
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+        f.write(pdf)
+        f.flush()
+        return subprocess.run(["pdftotext", "-layout", f.name, "-"], capture_output=True, text=True, check=True).stdout
+
+
+def nba_report(last=None, now=None):
+    """The latest official NBA injury report -> {"at": "YYYY-MM-DD HH:MM" ET, "players": {name: {day: tag}}}.
+    Unlike ESPN's feed it keeps Probable, Questionable and Doubtful apart (research/injury_tags.py).
+    last: the previous result; only newer reports are looked for (one or two requests a refresh), and it
+    is kept when there is none."""
+    import shutil
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    if not shutil.which("pdftotext"):
+        raise RuntimeError("pdftotext not installed")
+    t = datetime.fromtimestamp(now or time.time(), ZoneInfo("America/New_York"))
+    t = t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+    seen = (last or {}).get("at") or ""
+    for _ in range(REPORT_LOOKBACK):
+        stamp = t.strftime("%Y-%m-%d %H:%M")
+        if stamp <= seen:
+            break
+        text = report_text(t.date(), t.strftime("%I_%M%p"))
+        if text:
+            return {"at": stamp, "players": parse_report(text)}
+        t -= timedelta(minutes=15)
+    return last or {"at": None, "players": {}}
+
+
 def schedule(season=SEASON):
     """Every scheduled NBA game -> [{id, tip (epoch seconds), home, away, tbd}], by tip time."""
     data = espn.get_json("%s/seasons/%d" % (espn.FANTASY, season), {"view": "proTeamSchedules_wl"}, timeout=60)

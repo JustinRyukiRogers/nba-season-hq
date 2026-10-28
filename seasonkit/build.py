@@ -35,6 +35,7 @@ OWN_MIN_MINUTES = 500                  # under this many minutes last season, ES
 OWN_TS_SHOTS = 100                     # shots (FGA + FTA) before his own true shooting is shown
 OWN_SHRINK = {"2": 150, "3": 200, "ft": 50}  # league-average attempts added before taking his own make rates
 DEPTH_MAX_AGE = 3 * 3600               # depth charts change slowly; refetch (30 requests) at most this often
+REPORT_MAX_AGE = 14 * 60               # the official injury report: look for a newer one at most this often
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MY_TEAM_FALLBACK = 3
 
@@ -306,6 +307,14 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     raw_pool = pull.pool(cookies, games=max(2, min(GAMELOG_MAX, sp_now - log["period"] + GAMELOG_OVERLAP)))
     games = cached("schedule", pull.schedule, problems)
     injuries = {int(k): v for k, v in cached("injuries", pull.injuries, problems).items()}
+    try:
+        last = (read_json(CACHE / "nba_report.json") or {}).get("data")
+        report = cached("nba_report", lambda: pull.nba_report(last), problems, REPORT_MAX_AGE)
+    except Stale as err:
+        problems.append("official injury report unavailable (%s); day-to-day players get %.0f%% for their next game"
+                        % (err, 100 * model.DTD_PLAY))
+        report = {"at": None, "players": {}}
+    tags = {norm_name(name): t for name, t in report["players"].items()}
     calendar = model.Calendar(games, league["periods"], league["final_period"], league["regular"], now=now)
     update_gamelog(log, raw_pool, games, now)
     log["period"] = sp_now
@@ -317,6 +326,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     for entry in raw_pool:
         p = normalize_player(entry, league["starting"], ids)
         p["inj"] = injuries.get(p["id"])
+        p["tags"] = tags.get(norm_name(p["name"])) or {}
         players[p["id"]] = p
     try:
         depth_roles(cached("depth", pull.depth_charts, problems, DEPTH_MAX_AGE), players)

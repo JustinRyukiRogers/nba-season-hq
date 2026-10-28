@@ -44,6 +44,11 @@ jobs:
         run: |
           if [ -f data/takes.enc ]; then node seasonkit/crypt.mjs decrypt data/takes.enc data/takes.json; fi
 
+      # pdftotext reads the NBA's official injury report (Probable / Questionable / Doubtful); without it
+      # the refresh still runs and day-to-day players get the flat DTD_PLAY.
+      - name: Install pdftotext
+        run: command -v pdftotext || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends poppler-utils) || true
+
       - name: Refresh from ESPN
         env:
           ESPN_S2: ${{ secrets.ESPN_S2 }}
