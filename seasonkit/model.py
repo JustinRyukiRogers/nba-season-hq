@@ -53,7 +53,7 @@ DTD_PLAY = 0.6               # chance a day-to-day player plays his next game
 # A game the NBA's official injury report tags (it keeps apart what ESPN calls day-to-day): how often
 # a tagged player played, two seasons of the 1 PM and 5 PM ET reports (research/injury_tags.py,
 # 2026-10-28): Probable 93%, Questionable 50%, Doubtful 3%, Out 0%, the same in both seasons.
-# Available is cleared to play; he is treated as untagged.
+# Available is cleared to play: treated as untagged, and it overrides ESPN's day-to-day.
 TAG_PLAY = {"Probable": 0.93, "Questionable": 0.5, "Doubtful": 0.03, "Out": 0.0}
 # A healthy player's next few games: the season-long share above averages in injuries still to
 # come, but in the coming week a player on no injury report rarely sits (rest days, a new knock).
@@ -258,9 +258,10 @@ def game_odds(player, games, injury, note, today, season_end, base_share, back_s
     games after an expected return."""
     out, back, over = absence(player, injury, note, today, season_end)
     first_day = first_day or today
-    dtd = not out and player.get("status") == "DAY_TO_DAY"
-    rate = (note.get("games_rate") or 1.0)
     tags = player.get("tags") or {}
+    first = str(games[0]["date"]) if games else None
+    dtd = not out and player.get("status") == "DAY_TO_DAY" and tags.get(first) != "Available"
+    rate = (note.get("games_rate") or 1.0)
     odds = []
     for i, g in enumerate(games):
         tag = TAG_PLAY.get(tags.get(str(g["date"])))
