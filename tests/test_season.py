@@ -359,7 +359,7 @@ def test_lineup_day():
 
 def test_week_plan_and_move_days():
     start = date(2026, 11, 2)
-    cal = FakeCal(start, 4, {"BOS": [0, 1, 2, 3], "LAL": [1, 3], "MIA": [0, 2]}, now=10_000 + 60)   # day 0 has tipped
+    cal = FakeCal(start, 4, {"BOS": [0, 1, 2, 3], "LAL": [1, 3], "MIA": [0, 2], "NYK": [1]}, now=10_000 + 60)   # day 0 has tipped
     players = {1: player(1, team="LAL", value=50.0, fppg=20.0), 2: player(2, team="MIA", value=300.0, fppg=40.0),
                9: player(9, team="BOS", owner=0, fa="FREEAGENT", value=45.0, fppg=30.0)}
     for p in players.values():
@@ -371,13 +371,19 @@ def test_week_plan_and_move_days():
     plan = advice.week_plan(lg, players, 3, cal, [])
     m = plan["moves"][0]
     assert (m["id"], m["drop"], m["day"]) == (9, 1, str(start + timedelta(days=1))), m
-    assert m["spot"] and m["ros_cost"] == 2.5 and m["net"] == 7.5, "the streaming spot costs half the value given up: %s" % m
-    players[1]["ros"]["value"] = 80.0
+    assert m["spot"] and m["ros_cost"] == 2.5 and m["net"] == 47.5, "the streaming spot costs half the value given up: %s" % m
+    players[1]["ros"]["value"] = 160.0
     held = advice.week_plan(lg, players, 3, cal, [])
     assert not any(x["drop"] == 1 and x["day"] == m["day"] for x in held["moves"]), \
-        "a spot holder worth more for the season is not dropped for a day's +10"
+        "a spot holder worth more for the season is not dropped for the week's +50"
     players[1]["ros"]["value"] = 50.0
-    assert m["gain"] == 30.0 - 20.0, "judged on the day it counts from: %s" % m
+    assert m["gain"] == 3 * 30.0 - 2 * 20.0, "judged on the rest of the week from the day it counts: %s" % m
+    players[8] = dict(player(8, team="NYK", owner=0, fa="FREEAGENT", value=200.0, fppg=25.0), odds={str(start + timedelta(days=1)): 1.0})
+    players[9]["owner"] = 5
+    later = advice.week_plan(lg, players, 3, cal, [])
+    assert not later["moves"], "worth more for the season, but he plays once and the drop plays twice: it waits: %s" % later["moves"]
+    players[9]["owner"] = 0
+    del players[8]
     day1 = plan["lineups"][1]
     assert {r[1] for r in day1["slots"]} == {9, None} and day1["idle"] == [2], day1
     assert plan["points"] == plan["points_now"] + 3 * 30.0 - 2 * 20.0

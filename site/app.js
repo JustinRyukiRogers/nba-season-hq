@@ -757,7 +757,7 @@ function viewWeek() {
       }
       out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
         <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, ${m.drop ? 'drop ' + esc(P(m.drop).name) : 'into the open spot'}</div>
-        <div class="d">${signed(m.gain)} points in that day's lineup${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}.</div>
+        <div class="d">${signed(m.gain)} points over the rest of the week's lineups${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}.</div>
         <div class="who">${pill(m.id, 'add')}${m.drop ? pill(m.drop, 'drop') : ''}</div></div>`);
     }
   } else {
@@ -766,7 +766,7 @@ function viewWeek() {
   }
   const spot = [...(W.spot || []).map(id => esc(P(id).name)), ...(W.open ? ['an empty roster spot'] : [])].join(', ');
   out.push(`<p class="small muted"><b>Streaming spot${spot ? ': ' + spot : ''}.</b> Your lowest-valued healthy player's roster spot goes to a new
-    free agent most days: whoever adds most to that day's lineup. Tested over the whole season with this roster, that beat holding him by
+    free agent when one adds most to the rest of the week's lineups (a move that loses points this week waits). Tested over the whole season with this roster, that beat holding him by
     15 to 47 points a week, even assuming other teams take the best free agents and free agents score 15% under projection.
     One add a day; an add counts from the next day whose first game has not tipped off (ESPN locks rosters at the day's first game), so each add
     above has to be made before that day's first tip. Re-planned on every refresh.
@@ -1281,7 +1281,7 @@ function waiverList() {
     const st = d.streams;
     if (!st.days.length) return `<div class="empty">No days left in this matchup week.</div>`;
     const list = st.list.filter(r => passes(P(r.id)));
-    return `<p class="lead small">Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}): what he adds to that day's lineup, in place of your
+    return `<p class="lead small">Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}): what he adds to the week's lineups from that day on, in place of your
       streaming spot${(st.spot || []).length ? ` (${st.spot.map(id => esc(P(id).name)).join(', ')})` : ''} or one of your lowest-valued players. <b>Cost</b> is rest-of-season value given up
       when the player dropped is a real one worth more; for the streaming spot it is half the season value given up, and negative when the add is worth more.
       Only free agents you can add right away are listed. ${UPSIDE_NOTE}</p>

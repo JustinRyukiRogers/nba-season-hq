@@ -667,7 +667,7 @@ def summary(data):
     if plan["days"]:
         print("\nweek plan: %.0f points from your lineups (%.0f without moves)" % (plan["points"], plan["points_now"]))
         for m in plan["moves"]:
-            what = "IR stash" if m["kind"] == "stash" else "+%.0f that day" % m["gain"]
+            what = "IR stash" if m["kind"] == "stash" else "%+.0f this week" % m["gain"]
             print("  %s: add %s, drop %s (%s)" % (m["day"], pl[str(m["id"])]["name"],
                                                   pl[str(m["drop"])]["name"] if m["drop"] else "nobody: open spot", what))
     if data["hunches"]["list"]:
