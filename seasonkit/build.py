@@ -316,6 +316,19 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         report = {"at": None, "players": {}}
     tags = {norm_name(name): t for name, t in report["players"].items()}
     calendar = model.Calendar(games, league["periods"], league["final_period"], league["regular"], now=now)
+    # ESPN moves to the next scoring day some hours after midnight ET. Until then its current day is
+    # yesterday's, so today's rosters and lineup slots are read by date (Oct 31, 2:45 AM ET: JIM's
+    # Hayes, added at 1 AM, was missing from their Saturday projection)
+    want = (calendar.today - calendar.start).days + 1
+    if league["scoring_period"] and calendar.today >= calendar.start and league["scoring_period"] < want <= (league["final_period"] or 0):
+        try:
+            today_raw = {t["id"]: roster_entries(t) for t in pull.rosters(cookies, want)}
+            for t in league["teams"].values():
+                t["roster"] = today_raw.get(t["id"], t.get("roster_today", t["roster"]))
+            roster_from_tomorrow(league, pull.rosters(cookies, want + 1) if want < league["final_period"] else None)
+        except Exception as err:
+            problems.append("ESPN is still on yesterday's scoring day and today's rosters failed (%s); "
+                            "moves made since midnight are not seen" % type(err).__name__)
     update_gamelog(log, raw_pool, games, now)
     log["period"] = sp_now
     write_json(GAMELOG, log)
