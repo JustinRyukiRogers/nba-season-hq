@@ -43,6 +43,8 @@ STREAM_SPOTS = 1
 STREAM_DEFER = True       # no add that loses points over the rest of the week, however much season it adds
 STREAM_MIN_GAIN = 5.0     # points before a streaming-spot add is worth the move
 SPOT_VALUE_SHARE = 0.0    # share of the rest-of-season value change that counts when the spot turns over
+STREAM_MAX_SEASON_LOSS = 30.0  # season value a stream may give up (~0.6 a game for the rest of the season); a
+                               # filter, not part of the rank: past it the stream is listed but not planned
 KEEPER_MIN_GAIN = 100.0   # upside value (about season points) a season-long add must beat your weakest kept
                           # player by: ~2 points a game over the rest of the season. A judgment call, untested.
 
@@ -375,7 +377,8 @@ def add_options(ids, days, pool, players, starting, calendar, free=(), open_spot
                    "season": round(c["ros"]["value"] - held, 1),
                    "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
                    "starts": round(by.get(c["id"], [0.0])[0], 1)}
-            row["ok"] = row["net"] >= (STREAM_MIN_GAIN if row["spot"] else PLAN_MIN_NET) and not (STREAM_DEFER and gain < 0)
+            row["ok"] = row["net"] >= (STREAM_MIN_GAIN if row["spot"] else PLAN_MIN_NET) and not (STREAM_DEFER and gain < 0) \
+                and not (spot and x is not None and row["season"] < -STREAM_MAX_SEASON_LOSS)
             if c["id"] not in best or row["net"] > best[c["id"]]["net"]:
                 best[c["id"]] = row
     return base, sorted(best.values(), key=lambda r: -r["net"])
@@ -508,8 +511,10 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None, wait
         used |= {m["id"], m["drop"]}
         if m["drop"] is None:
             open_spots -= 1
-        if m["spot"]:
-            spot = (spot - {m["drop"]}) | {m["id"]}
+        # the spot goes back to whoever is now worth least: a stream worth more than a kept player is
+        # kept, and that player becomes the spot (2026-11-02: Champagnie, added Friday, was streamed
+        # away Saturday at -72 of season value because he had inherited the spot)
+        spot = stream_spots(pick, held, open_spots)
 
     locked = {e["id"]: e["slot"] for e in roster(league, me, include_ir=False, today=True)}
     today_ids = [pid for pid in locked if pid in players]

@@ -377,6 +377,17 @@ def test_week_plan_and_move_days():
     moved = advice.week_plan(lg, players, 3, cal, [])["moves"]
     assert all(x["drop"] == 2 for x in moved), "a stream only ever replaces the streaming spot: %s" % moved
     players[2]["ros"]["value"] = 300.0
+    # two adds: the first is worth more than the kept player, so the second stream drops that player instead
+    players[8] = player(8, team="NYK", owner=0, fa="FREEAGENT", value=400.0, fppg=1.0)
+    players[8]["odds"] = {str(g["date"]): 1.0 for g in cal.by_team["NYK"]}
+    players[9]["ros"]["value"], players[1]["ros"]["value"] = 100.0, 50.0
+    players[7] = player(7, team="BOS", owner=0, fa="FREEAGENT", value=10.0, fppg=35.0)
+    players[7]["odds"] = {str(g["date"]): 1.0 for g in cal.by_team["BOS"]}
+    two = advice.week_plan(lg, players, 3, cal, [])["moves"]
+    assert len(two) < 2 or two[1]["drop"] != two[0]["id"] or players[two[0]["id"]]["ros"]["value"] <= 50.0, \
+        "an add worth more than a kept player does not inherit the streaming spot: %s" % two
+    del players[7], players[8]
+    players[9]["ros"]["value"] = 45.0
     assert m["gain"] == 3 * 30.0 - 2 * 20.0, "judged on the rest of the week from the day it counts: %s" % m
     players[8] = dict(player(8, team="NYK", owner=0, fa="FREEAGENT", value=200.0, fppg=25.0), odds={str(start + timedelta(days=1)): 1.0})
     players[9]["owner"] = 5
