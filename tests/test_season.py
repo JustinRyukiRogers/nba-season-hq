@@ -371,12 +371,12 @@ def test_week_plan_and_move_days():
     plan = advice.week_plan(lg, players, 3, cal, [])
     m = plan["moves"][0]
     assert (m["id"], m["drop"], m["day"]) == (9, 1, str(start + timedelta(days=1))), m
-    assert m["spot"] and m["ros_cost"] == 2.5 and m["net"] == 47.5, "the streaming spot costs half the value given up: %s" % m
-    players[1]["ros"]["value"] = 160.0
-    held = advice.week_plan(lg, players, 3, cal, [])
-    assert not any(x["drop"] == 1 and x["day"] == m["day"] for x in held["moves"]), \
-        "a spot holder worth more for the season is not dropped for the week's +50"
-    players[1]["ros"]["value"] = 50.0
+    assert m["spot"] and m["ros_cost"] == 0.0 and m["net"] == 50.0 and m["season"] == -5.0, \
+        "a stream is judged on the week alone; the season change is shown, not counted: %s" % m
+    players[2]["ros"]["value"] = 30.0     # now 2 holds the streaming spot: the stream drops him, never 1
+    moved = advice.week_plan(lg, players, 3, cal, [])["moves"]
+    assert all(x["drop"] == 2 for x in moved), "a stream only ever replaces the streaming spot: %s" % moved
+    players[2]["ros"]["value"] = 300.0
     assert m["gain"] == 3 * 30.0 - 2 * 20.0, "judged on the rest of the week from the day it counts: %s" % m
     players[8] = dict(player(8, team="NYK", owner=0, fa="FREEAGENT", value=200.0, fppg=25.0), odds={str(start + timedelta(days=1)): 1.0})
     players[9]["owner"] = 5
@@ -544,7 +544,7 @@ def test_hunches():
     assert set(signs) == {10, 12}, "a minutes jump and a starter newly out are hunches; a teammate back that day is not: %s" % signs
     assert "30 min a game over his last 2 games" in signs[10][0] and "P20 (knee, out" in signs[12][0], signs
     r = next(r for r in h["list"] if r["id"] == 12)
-    assert r["drop"] == 1 and r["net"] == 22.0 - 0.5 * (50.0 - 20.0) and r["vs_top"] == r["net"] - 25.0, r
+    assert r["drop"] == 1 and r["net"] == 22.0 and r["season"] == -30.0 and r["vs_top"] == r["net"] - 25.0, r
     players[20]["inj"]["updated"] = stamp(advice.HUNCH_NEWS_DAYS + 1)
     assert {r["id"] for r in advice.hunches(lg, players, 3, cal, {"days": [str(day)], "list": []})["list"]} == {10}, \
         "an injury from last week is already in the projections"
@@ -557,6 +557,10 @@ def test_upgrades_skip_streaming_spot():
     lg["starting"], lg["slots"] = ["UT"], {"BE": 2}
     ups = advice.upgrades(lg, players, 3)
     assert ups["drop"] == 2 and not ups["list"], "a free agent worth less than your weakest kept player is no upgrade: %s" % ups
+    players[9]["ros"]["value"] = 160.0 + advice.KEEPER_MIN_GAIN - 1
+    assert not advice.upgrades(lg, players, 3)["list"], "a season-long add has to clear the bar, not just edge past"
+    players[9]["ros"]["value"] = 160.0 + advice.KEEPER_MIN_GAIN
+    assert [r["id"] for r in advice.upgrades(lg, players, 3)["list"]] == [9]
 
 
 def test_ceiling_and_upside():
@@ -571,6 +575,15 @@ def test_ceiling_and_upside():
     p["ros"].update(fppg=20.0, upside=23.0, value=100.0, value_up=140.0)
     v = advice.upside_view({1: p})[1]["ros"]
     assert (v["fppg"], v["value"]) == (23.0, 140.0) and p["ros"]["fppg"] == 20.0, "the view leaves the real numbers alone"
+    p["ros"]["near_up"] = 26.0
+    s = advice.stream_view({1: p})[1]["ros"]
+    assert (s["fppg"], s["value"]) == (26.0, 140.0), "streams pick on the near-term number, values stay the season's"
+    mins_slow = model.minutes_rate(20.0, 1.0, [(30.0, 30.0)] * 2, [2, 30.0, 30.0])[0]
+    mins_fast = model.minutes_rate(20.0, 1.0, [(30.0, 30.0)] * 2, [2, 30.0, 30.0], k=model.NEAR_PRIOR_GAMES)[0]
+    assert mins_fast >= mins_slow, (mins_slow, mins_fast)
+    drop_slow = model.minutes_rate(30.0, 1.0, [(20.0, 20.0)] * 2, [2, 20.0, 20.0])[0]
+    drop_fast = model.minutes_rate(30.0, 1.0, [(20.0, 20.0)] * 2, [2, 20.0, 20.0], k=model.NEAR_PRIOR_GAMES)[0]
+    assert drop_fast < drop_slow, "the near-term number follows a drop in minutes faster too: %s" % ((drop_slow, drop_fast),)
 
 
 def test_locked_left():

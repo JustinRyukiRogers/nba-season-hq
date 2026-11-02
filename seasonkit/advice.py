@@ -10,7 +10,7 @@ from itertools import combinations
 
 from .model import ET, NEAR_TERM_PLAY, OUT_TAGS, REPLACEMENT_FA_RANK, best_lineup, et_date, lineup_day, parse_day, project_days
 
-STREAM_DROPS = 3          # drop candidates tried for each stream: your lowest-valued players
+STREAM_DROPS = 0          # drop candidates tried for each stream besides the streaming spot (see below)
 STREAM_POOL = 40          # free agents tried as streams, by expected points this week
 LINEUP_MIN_GAIN = 0.5     # expected points before a lineup change is worth suggesting
 PLAN_MIN_NET = 10.0       # points, net of rest-of-season value given up, before an add for a real player is planned
@@ -32,10 +32,19 @@ PLAN_MIN_NET = 10.0       # points, net of rest-of-season value given up, before
 # points over holding against +148 for one day (better in 4 of 21 weeks, worse in none); with the
 # best 30 free agents gone and the rest 10% under projection, +29 against 0. A move that loses points
 # this week waits (the same add can be made next week): +22 more, in the one week it came up.
+# Changed 2026-11-01 at the user's request: streams and season-long adds are separate lists, each ranked
+# on its own number, so a player who is middling on both no longer tops either ("I also don't want
+# people who are going to be mediocre across both because they fit both groups"). The week 2 review
+# found the losses came from dropping 29-30 a game players (Braun, Gillespie), not from streaming.
+# Streams: points over the rest of the week only (on the near-term number, model.NEAR_PRIOR_GAMES),
+# and only out of the streaming spot, never a kept player (STREAM_DROPS 0). Season value is shown, not
+# counted. Season-long adds: rest-of-season value only, and they must clear KEEPER_MIN_GAIN.
 STREAM_SPOTS = 1
 STREAM_DEFER = True       # no add that loses points over the rest of the week, however much season it adds
 STREAM_MIN_GAIN = 5.0     # points before a streaming-spot add is worth the move
-SPOT_VALUE_SHARE = 0.5    # share of the rest-of-season value change that counts when the spot turns over
+SPOT_VALUE_SHARE = 0.0    # share of the rest-of-season value change that counts when the spot turns over
+KEEPER_MIN_GAIN = 100.0   # upside value (about season points) a season-long add must beat your weakest kept
+                          # player by: ~2 points a game over the rest of the season. A judgment call, untested.
 
 # Trade ideas: a quick screen on rest-of-season value, then the best few per team re-scored with
 # the lineup simulation for both sides.
@@ -235,6 +244,14 @@ def upside_view(players):
             for pid, p in players.items()}
 
 
+def stream_view(players):
+    """The players as streams are picked: points a game at the near-term number with the upside lean
+    (model.NEAR_PRIOR_GAMES, UPSIDE_RISK). Values stay the season's upside values: the season change
+    shown on a stream (and the streaming spot itself) still read them."""
+    return {pid: dict(p, ros=dict(p["ros"], fppg=p["ros"].get("near_up", p["ros"]["upside"]), value=p["ros"]["value_up"]))
+            for pid, p in players.items()}
+
+
 def free_agents(players, instant_only=False, mine=False):
     """mine: the pool for suggestions to you, without the players you've passed on (a season note's "skip")."""
     return [p for p in players.values() if p["owner"] == 0 and not (mine and p.get("skip"))
@@ -253,10 +270,10 @@ def upgrades(league, players, me, top=12):
     floor = players[drop]["ros"]["value"]
     fas = sorted((p for p in free_agents(players, mine=True) if not p["ros"]["out"]),   # Out players: see stash()
                  key=lambda p: -p["ros"]["value"])
-    rows = [{"id": p["id"], "gain": round(p["ros"]["value"] - floor, 1)} for p in fas if p["ros"]["value"] > floor]
+    rows = [{"id": p["id"], "gain": round(p["ros"]["value"] - floor, 1)} for p in fas if p["ros"]["value"] - floor >= KEEPER_MIN_GAIN]
     # with an open spot the add needs no drop: the open spot is the streaming spot until he takes it,
     # and then `drop` holds it, so he is still measured against `drop`
-    return {"drop": drop, "open": open_room(league, ids), "list": rows[:top]}
+    return {"drop": drop, "open": open_room(league, ids), "bar": KEEPER_MIN_GAIN, "list": rows[:top]}
 
 
 def stash(league, players, me, free_ir, top=12):
@@ -355,6 +372,7 @@ def add_options(ids, days, pool, players, starting, calendar, free=(), open_spot
             held = players[x]["ros"]["value"] if x is not None else 0.0
             cost = SPOT_VALUE_SHARE * (held - c["ros"]["value"]) if spot else max(0.0, held - c["ros"]["value"])
             row = {"kind": "add", "id": c["id"], "drop": x, "spot": spot, "gain": round(gain, 1), "ros_cost": round(cost, 1),
+                   "season": round(c["ros"]["value"] - held, 1),
                    "net": round(gain - cost, 1), "games": sum(1 for d in days if str(d) in c["odds"]),
                    "starts": round(by.get(c["id"], [0.0])[0], 1)}
             row["ok"] = row["net"] >= (STREAM_MIN_GAIN if row["spot"] else PLAN_MIN_NET) and not (STREAM_DEFER and gain < 0)
@@ -1283,6 +1301,14 @@ def _ahead(waivers):
     return max(0, (waivers.get("my_rank") or 1) - 1)
 
 
+def season_note(players, m):
+    """A stream's season-long side, shown but not counted (the spot streams)."""
+    if m["drop"] is None or abs(m.get("season", 0.0)) < 1:
+        return ""
+    return " Over the season he is worth %.0f %s than %s (shown, not counted: the spot streams)." % (
+        abs(m["season"]), "more" if m["season"] > 0 else "less", name(players, m["drop"]))
+
+
 def stream_action(league, players, stream_list, calendar):
     s = stream_list["list"][0]
     first = calendar.first_tip(parse_day(stream_list["days"][0]))
@@ -1294,7 +1320,8 @@ def stream_action(league, players, stream_list, calendar):
             "player": s["id"], "drop": s["drop"],
             "title": "Stream %s for %s (+%.0f points this week)" % (name(players, s["id"]), name(players, s["drop"]), s["gain"]),
             "detail": "%s left this week." % plural(s["games"], "game")
-                      + (" Costs %.0f of rest-of-season value." % s["ros_cost"] if s["ros_cost"] >= 1 else ""),
+                      + (" Costs %.0f of rest-of-season value." % s["ros_cost"] if s["ros_cost"] >= 1 else "")
+                      + season_note(players, s),
             "why": why}
 
 
@@ -1320,6 +1347,7 @@ def plan_action(league, players, plan, calendar):
         detail += " Costs %.0f of rest-of-season value." % m["ros_cost"]
     elif m["ros_cost"] <= -1:
         detail += " Credited %.0f for being worth more over the season." % -m["ros_cost"]
+    detail += season_note(players, m)
     if later:
         detail += " Then: " + "; ".join("%s add %s for %s" % (parse_day(x["day"]).strftime("%a"), name(players, x["id"]),
                                                              name(players, x["drop"]) if x["drop"] else "the open spot")

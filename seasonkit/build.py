@@ -396,8 +396,9 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     ups = advice.upgrades(league, up, me)
     # an IR player who is back gets activated first (the week plan does it), which frees his slot
     stash_list = advice.stash(league, players, me, free_ir + len(advice.ir_returns(league, players, me)))
-    stream_list = advice.streams(league, up, me, calendar, txs)
-    hunch_list = advice.hunches(league, up, me, calendar, stream_list)
+    sv = advice.stream_view(players)        # streams lean to the near term (model.NEAR_PRIOR_GAMES)
+    stream_list = advice.streams(league, sv, me, calendar, txs)
+    hunch_list = advice.hunches(league, sv, me, calendar, stream_list)
     on_waivers = [p for p in fas if p["fa"] == "WAIVERS"]
     clears = min((p["waiver_until"] for p in on_waivers if p["waiver_until"]), default=None)
     waivers = {"all_on_waivers": bool(fas) and len(on_waivers) == len(fas), "clears": clears,
@@ -408,7 +409,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     pending = (advice.stash_action(league, players, me, stash_list, waivers, calendar)
                if stash_list["free_ir"] > 0 and stash_list["list"] else None)
     reserve = {"id": pending["player"], "drop": pending["drop"]} if pending and pending["urgency"] in ("now", "soon") else None
-    plan = advice.week_plan(league, players, me, calendar, txs, reserve, pick=up)
+    plan = advice.week_plan(league, players, me, calendar, txs, reserve, pick=sv)
     trades = advice.trade_ideas(league, players, me, calendar)
     try:
         league_moves = advice.league_moves(league, players, me, calendar, pull.league_moves(cookies))

@@ -757,7 +757,7 @@ function viewWeek() {
       }
       out.push(`<div class="card act ${m === W.moves[0] && m.by && m.by - Date.now() / 1000 <= 86400 ? 'now' : 'soon'}">
         <div class="t">${esc(dayLabel(m.day))}${m.by ? ` · before ${esc(timeLabel(m.by))}` : ''}: add ${esc(p.name)}, ${m.drop ? 'drop ' + esc(P(m.drop).name) : 'into the open spot'}</div>
-        <div class="d">${signed(m.gain)} points over the rest of the week's lineups${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}.</div>
+        <div class="d">${signed(m.gain)} points over the rest of the week's lineups${m.ros_cost >= 1 ? `, less ${n0(m.ros_cost)} of rest-of-season value given up` : ''}${m.spot ? ' · streaming spot' : ''}${m.drop && Math.abs(m.season || 0) >= 1 ? ` · season ${signed(m.season)} vs ${esc(P(m.drop).name)} (not counted)` : ''}.</div>
         <div class="who">${pill(m.id, 'add')}${m.drop ? pill(m.drop, 'drop') : ''}</div></div>`);
     }
   } else {
@@ -766,8 +766,8 @@ function viewWeek() {
   }
   const spot = [...(W.spot || []).map(id => esc(P(id).name)), ...(W.open ? ['an empty roster spot'] : [])].join(', ');
   out.push(`<p class="small muted"><b>Streaming spot${spot ? ': ' + spot : ''}.</b> Your lowest-valued healthy player's roster spot goes to a new
-    free agent when one adds most to the rest of the week's lineups (a move that loses points this week waits). Tested over the whole season with this roster, that beat holding him by
-    15 to 47 points a week, even assuming other teams take the best free agents and free agents score 15% under projection.
+    free agent when one adds most to the rest of the week's lineups (a move that loses points this week waits). Streams never drop a player you keep; season-long adds are a separate list.
+    Replayed over the next 8 weeks with this roster (Nov 1), that beat holding by about 28 points a week, or 8 if other teams take the best 30 free agents and the rest score 10% under projection.
     One add a day; an add counts from the next day whose first game has not tipped off (ESPN locks rosters at the day's first game), so each add
     above has to be made before that day's first tip. Re-planned on every refresh.
     ${W.preseason_add ? 'ESPN may count the days before the opener as one day for the one-add limit, so an add made before the opener can use up opening day\'s.' : ''}</p>`);
@@ -1230,7 +1230,7 @@ function viewTeamNews() {
 
 // ----- Waivers -----
 function viewWaivers() {
-  const seg = [['adds', 'Best adds'], ['stash', 'IR stash'], ['streams', 'Streams'], ['trending', 'Trending']]
+  const seg = [['adds', 'Season-long'], ['streams', 'Streams (this week)'], ['stash', 'IR stash'], ['trending', 'Trending']]
     .map(([k, l]) => `<button data-wtab="${k}" class="${S.wtab === k ? 'on' : ''}">${l}</button>`).join('');
   const pos = ['', 'PG', 'SG', 'SF', 'PF', 'C']
     .map(k => `<button data-pos="${k}" class="${S.pos === k ? 'on' : ''}">${k || 'All'}</button>`).join('');
@@ -1263,10 +1263,12 @@ function waiverList() {
     ? `<div class="banner small">Every free agent is on waivers until <b>${esc(d.waivers.clears_label)}</b>; claims then process in waiver order, and you are #${d.waivers.my_rank} of ${d.league.size}.</div>` : '';
   if (S.wtab === 'adds') {
     const list = freeAgents().filter(p => !p.ros.out && passes(p)).sort((a, b) => b.ros.value_up - a.ros.value_up).slice(0, 60);
-    return waiverNote + `<p class="lead small">Ranked on upside value against your weakest player${drop ? `, <b>${esc(drop.name)}</b> (upside value ${n0(floor)})` : ''}. ${UPSIDE_NOTE}
+    const bar = d.upgrades.bar || 0;
+    return waiverNote + `<p class="lead small"><b>Players to keep.</b> Ranked on rest-of-season upside value against your weakest kept player${drop ? `, <b>${esc(drop.name)}</b> (upside value ${n0(floor)})` : ''};
+      this week's schedule doesn't count here (that is the Streams list). Only a player at least <b>+${n0(bar)}</b> over him (about 2 points a game for the rest of the season) is recommended, so a small edge doesn't turn over a keeper. ${UPSIDE_NOTE}
       Replacement level is ${n1(d.replacement)} points per game.</p>
       <div class="rows">${list.map(p => row(p, [['ROS', n1(p.ros.fppg)], ['ceiling', n0(p.ros.ceiling), '', true], ['upside', n1(p.ros.upside), p.ros.upside > p.ros.fppg + 0.5 ? 'pos' : ''],
-        ['wk G', p.week.games, '', true], ['value', n0(p.ros.value_up)], ['vs drop', signed(p.ros.value_up - floor), p.ros.value_up > floor ? 'pos' : 'neg']],
+        ['wk G', p.week.games, '', true], ['value', n0(p.ros.value_up)], ['vs drop', signed(p.ros.value_up - floor), p.ros.value_up - floor >= bar ? 'pos' : p.ros.value_up > floor ? '' : 'neg']],
         { meta: meta(p) + ' · ' + esc(nextGame(p)) + ` · ${n1(p.own)}% owned` })).join('') || '<div class="empty">No one matches.</div>'}</div>`;
   }
   if (S.wtab === 'stash') {
@@ -1281,11 +1283,12 @@ function waiverList() {
     const st = d.streams;
     if (!st.days.length) return `<div class="empty">No days left in this matchup week.</div>`;
     const list = st.list.filter(r => passes(P(r.id)));
-    return `<p class="lead small">Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}): what he adds to the week's lineups from that day on, in place of your
-      streaming spot${(st.spot || []).length ? ` (${st.spot.map(id => esc(P(id).name)).join(', ')})` : ''} or one of your lowest-valued players. <b>Cost</b> is rest-of-season value given up
-      when the player dropped is a real one worth more; for the streaming spot it is half the season value given up, and negative when the add is worth more.
+    return `<p class="lead small"><b>This week only.</b> Best pickups for the next day an add counts (${st.days.map(dayShort).join(', ')}), ranked on what he adds to the week's lineups from that day on.
+      A stream only ever replaces your streaming spot${(st.spot || []).length ? ` (${st.spot.map(id => esc(P(id).name)).join(', ')})` : ''}, never a player you keep.
+      Points use a near-term number: his own minutes count as much as the preseason guess after 2 games instead of 4, which picked better for the next week in the minutes backtest.
+      <b>Season</b> is how much more (or less) he is worth than the player dropped over the rest of the season: shown, not counted.
       Only free agents you can add right away are listed. ${UPSIDE_NOTE}</p>
-      <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', n0(r.gain), 'pos'], ['cost', n0(r.ros_cost), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg']],
+      <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['games', r.games], ['starts', n1(r.starts), '', true], ['+pts', signed(r.gain), r.gain > 0 ? 'pos' : 'neg'], ['season', r.drop ? signed(r.season || 0) : '–', '', true]],
         { meta: meta(p) + (r.drop ? ' · drop ' + esc(P(r.drop).name) : ' · into the open spot') + ` · ceiling ${n0(p.ros.ceiling)}` }); }).join('') || `<div class="empty">${d.waivers.all_on_waivers ? 'Nobody can be added outright until waivers clear.' : 'No pickup improves this week.'}</div>`}</div>
       ${hunchList()}`;
   }
@@ -1303,9 +1306,9 @@ function hunchList() {
   return `<h2>On a hunch <span class="sub">${H.days.map(dayShort).join(', ')}</span></h2>
     <p class="lead small">Free agents playing that day whose role may be bigger than the projections know: minutes over their last few games
       well above ESPN's projection, a teammate at their position newly ruled out, or a jump in adds across ESPN. The points are still the model's,
-      which does not read those signs; <b>vs top</b> is what the hunch costs against the best stream above if he only plays to projection.
+      which does not read those signs (tested: a teammate being out did not predict more minutes once his own recent minutes were counted); <b>vs top</b> is what the hunch costs against the best stream above if he only plays to projection.
       A stream lasts a day, so a wrong hunch is cheap.</p>
-    <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['starts', n1(r.starts), '', true], ['net', signed(r.net), r.net > 0 ? 'pos' : 'neg'], ['vs top', signed(r.vs_top), r.vs_top >= 0 ? 'pos' : 'neg']],
+    <div class="rows">${list.map(r => { const p = P(r.id); return row(p, [['starts', n1(r.starts), '', true], ['+pts', signed(r.net), r.net > 0 ? 'pos' : 'neg'], ['vs top', signed(r.vs_top), r.vs_top >= 0 ? 'pos' : 'neg']],
       { meta: meta(p) + ' · ' + esc(nextGame(p)) + (r.drop ? ' · drop ' + esc(P(r.drop).name) : ''), note: r.signs.map(esc).join('<br>') }); }).join('')
       || '<div class="empty">No free agent playing that day shows a sign.</div>'}</div>`;
 }

@@ -46,6 +46,11 @@ RATE_PRIOR_MINUTES = 400.0
 # waiver picks +1.4 points a week each. Whether a teammate is out added nothing; drops keep the slow weight.
 MINUTES_BUMP = 5.0
 MINUTES_BUMP_PRIOR_GAMES = 2.0
+# Streams only (the user, 2026-11-01: more weight on what is happening now): a near-term number with
+# his own minutes trusted after 2 games for everyone, rises and drops alike. In the minutes backtest
+# (research/minutes_backtest.py, 2026-10-25) km 2 picked better for the next week (97.9 points a week
+# per waiver pick against 96.6) but was worse for the rest of the season, so values keep km 4.
+NEAR_PRIOR_GAMES = 2.0
 FALLBACK_PRIOR_GAMES = 6.0   # players the board never valued: their own games take over quickly
 DEEP_BENCH = 12.0            # their per-game prior when ESPN does not project them
 FALLBACK_LAST_GAMES = 30.0   # games of last season's average that count as much as DEEP_BENCH
@@ -215,10 +220,11 @@ def upside(r):
     return r["fppg"] + UPSIDE_RISK * (up - r["fppg"])
 
 
-def minutes_rate(prior_mpg, prior_rate, games, season):
+def minutes_rate(prior_mpg, prior_rate, games, season, k=None):
     """Expected minutes and points a minute. games: [(fantasy points, minutes)] of his games this
     season, oldest first (may miss early ones); season: [games, minutes, points per game] totals.
-    -> (minutes, rate, minutes weight of his own play)."""
+    k: games of his own play that count as much as the preseason minutes (default: the shipped
+    weights). -> (minutes, rate, minutes weight of his own play)."""
     gp = season[0] if season and season[0] else 0
     recent = games[-MINUTES_RECENT:]
     if recent:
@@ -229,7 +235,8 @@ def minutes_rate(prior_mpg, prior_rate, games, season):
     else:
         return prior_mpg, prior_rate, 0.0
     n = min(MINUTES_RECENT, max(gp, len(recent)))
-    k = MINUTES_BUMP_PRIOR_GAMES if played - prior_mpg >= MINUTES_BUMP else MINUTES_PRIOR_GAMES
+    if k is None:
+        k = MINUTES_BUMP_PRIOR_GAMES if played - prior_mpg >= MINUTES_BUMP else MINUTES_PRIOR_GAMES
     w = n / (n + k)
     mins = prior_mpg + w * (played - prior_mpg)
     tot_min = gp * season[1] if gp else sum(m for _, m in games)
@@ -330,14 +337,24 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
     gp, actual = (season[0], season[2]) if season and season[0] else (0, None)
     fppg, sd = blend(pfppg, sigma, gp, actual, k)
     mins, rate, own_weight = None, None, (gp / (gp + k) if gp else 0.0)
+    near = fppg
     if pmpg and pmpg > 0:
         mins, rate, own_weight = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season)
         fppg = mins * rate
+        near_mins = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season, k=NEAR_PRIOR_GAMES)[0]
+        near = near_mins * rate
+    else:
+        near_mins = mins
     fppg += note.get("fppg_delta") or 0.0
-    role = fppg
+    near += note.get("fppg_delta") or 0.0
     recent = [m for _, m in (games_played or []) if m > 0][-ROLE_GAMES:]
-    if mins and rate and recent and sum(recent) / len(recent) > mins:
-        role = fppg + rate * (sum(recent) / len(recent) - mins)
+
+    def role_at(pts, m):
+        """Points a game at his last few games' minutes, when he has been playing more than m."""
+        if m and rate and recent and sum(recent) / len(recent) > m:
+            return pts + rate * (sum(recent) / len(recent) - m)
+        return pts
+    role = role_at(fppg, mins)
 
     games = calendar.remaining(p["team"]) if p["team"] in calendar.by_team else []
     out, back, over = absence(p, injuries.get(p["id"]), note, calendar.today, calendar.end)
@@ -384,6 +401,8 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
                 "points": round(played * fppg),
                 "ceiling": round(ceiling(fppg, [f for f, m in (games_played or []) if m > 0]), 1), "role": round(role, 2)}
     p["ros"]["upside"] = round(upside(p["ros"]), 2)
+    p["ros"]["near"] = round(near, 2)          # streams: see NEAR_PRIOR_GAMES
+    p["ros"]["near_up"] = round(upside(dict(p["ros"], fppg=near, role=role_at(near, near_mins))), 2)
     return p
 
 
