@@ -27,7 +27,7 @@ GAMELOG_OVERLAP = 3                    # scoring days re-read each refresh, for 
 GAMELOG_MAX = 200                      # most games asked for at once (a lost cache refills the season)
 GAMELOG_VERSION = 3                    # 2: each game keeps its shots; 3: and turnovers (an older log is refilled)
 SHOTS = (FGA, FGM, TPA, TPM, FTA, FTM)  # the box score a logged game keeps after points and minutes, then TO
-BOXES = CACHE / "boxes.json"           # each finished game's team totals, for usage rates
+BOXES = CACHE / "boxes.json"           # each finished game's team totals (usage rates) and garbage time
 BOXES_MAX_NEW = 150                    # games' team boxes fetched in one refresh (a lost cache refills over a few)
 FT_PLAY = 0.44                         # free throw attempts that end a play (the usual usage-rate weight)
 LEAGUE_MIN_PER_PLAY = 2.15             # team minutes per team play (FGA + 0.44 FTA + TO), until this season has boxes
@@ -332,7 +332,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     update_gamelog(log, raw_pool, games, now)
     log["period"] = sp_now
     write_json(GAMELOG, log)
-    boxes = update_boxes(games, now, problems)
+    boxes, flows = update_boxes(games, now, problems)
 
     ids = pull.stat_ids()
     players = {}
@@ -474,7 +474,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "matchup": match, "next_matchup": match_next, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
-        "gamelog": page_gamelog(log, players, games, calendar, own, boxes),
+        "gamelog": page_gamelog(log, players, games, calendar, own, boxes, flows),
         "usage": page_usage(own, boxes, players),
     }
     SITE.mkdir(exist_ok=True)
@@ -510,19 +510,25 @@ def update_gamelog(log, raw_pool, games, now):
 
 
 def update_boxes(games, now, problems):
-    """Team totals for every finished game this season (pull.team_boxes), kept in cache/boxes.json; a
-    finished game's box does not change, so each is fetched once, at most BOXES_MAX_NEW a refresh."""
+    """Team totals and garbage time for every finished game this season (pull.team_boxes), kept in
+    cache/boxes.json -> (boxes, flows). A finished game's do not change, so each is fetched once, at most
+    BOXES_MAX_NEW a refresh; a game whose play-by-play was incomplete keeps an empty flow."""
     have = read_json(BOXES, {}) or {}
     if have.get("season") != SEASON:
         have = {"season": SEASON, "games": {}}
-    want = [g["id"] for g in games if now - g["tip"] >= GAMELOG_SETTLE and str(g["id"]) not in have["games"]]
+    have.setdefault("flow", {})
+    want = [g["id"] for g in games if now - g["tip"] >= GAMELOG_SETTLE
+            and (str(g["id"]) not in have["games"] or str(g["id"]) not in have["flow"])]
     if want:
         got = pull.team_boxes(want[-BOXES_MAX_NEW:])
-        have["games"].update({str(k): v for k, v in got.items()})
+        for k, (box, flow) in got.items():
+            if box:
+                have["games"][str(k)] = box
+            have["flow"][str(k)] = flow or {}
         if len(got) < len(want):
             problems.append("team boxes: %d finished games still to fetch (usage rates leave them out)" % (len(want) - len(got)))
         write_json(BOXES, have)
-    return have["games"]
+    return have["games"], have["flow"]
 
 
 def plays(fga, fta, to):
@@ -538,21 +544,28 @@ def min_per_play(boxes):
     return m / n if n > 1000 else LEAGUE_MIN_PER_PLAY
 
 
-def page_gamelog(log, players, games, calendar, own=None, boxes=None):
+def page_gamelog(log, players, games, calendar, own=None, boxes=None, flows=None):
     """The log for the page: {player id: [[days since opening night, fantasy points, minutes, shooting
     points, shooting points his attempts were worth at his make rates, other points his minutes were
     worth at his rate, FGA, 3PA, FTA, points, plays he used, plays his team used while he was on the
     floor], ...]} for players in the pool. The three "worth" columns need his own rates (own_rates) and
     are None without them; the team's plays need the game's team box (update_boxes) and are None
     without it. Usage rate = plays he used / plays his team used while he was on (his minutes x the
-    team's plays a fifth of the team's minutes)."""
-    own, boxes = own or {}, boxes or {}
+    team's plays a fifth of the team's minutes). Then [his team's final margin, minutes of garbage time
+    in the game, minutes he played in it] from the game's flow (pull.game_flow), None without it: a short
+    night in a blowout shows as a big margin with garbage time he sat through."""
+    own, boxes, flows = own or {}, boxes or {}, flows or {}
     day = {g["id"]: (model.et_date(g["tip"]) - calendar.start).days for g in games}
+
+    def flow(pid, gid):
+        f = flows.get(str(gid)) or {}
+        mine = (f.get("p") or {}).get(str(pid))
+        return [mine[0], f["gt"], mine[1]] if mine else [None, None, None]
 
     def row(pid, gid, g):
         out = [day[int(gid)], g[0], g[1]]
         if len(g) < 2 + len(SHOTS) + 1:
-            return out
+            return out + [None] * 9 + flow(pid, gid)
         fga, fgm, tpa, tpm, fta, ftm, to = g[2:9]
         rates = own.get(int(pid))
         sf = shooting_points(fga, fgm, tpa, tpm, fta, ftm)
@@ -564,7 +577,7 @@ def page_gamelog(log, players, games, calendar, own=None, boxes=None):
             out += [round(sf, 1), None, None]
         team = next((t for t in boxes.get(str(gid)) or [] if int(pid) in t[4]), None)
         on = round(g[1] * plays(*team[1:4]) / (team[0] / 5), 1) if team else None
-        return out + [fga, tpa, fta, 2 * fgm + tpm + ftm, round(plays(fga, fta, to), 1), on]
+        return out + [fga, tpa, fta, 2 * fgm + tpm + ftm, round(plays(fga, fta, to), 1), on] + flow(pid, gid)
     return {pid: sorted(row(pid, gid, g) for gid, g in gs.items() if int(gid) in day)
             for pid, gs in log["players"].items() if int(pid) in players}
 

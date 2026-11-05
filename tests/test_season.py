@@ -254,7 +254,32 @@ def test_shot_xfp():
     assert abs(row[11] - 30 * 115 / 48) < 0.05, "his team's plays while he was on: 30 of its 48 minutes a fifth"
     bare = build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal)["1"][0]
     assert bare[4] is None and bare[11] is None, "no own rates or team box: those columns are empty, not left out"
+    assert bare[12:] == [None, None, None], "no flow: margin and garbage time are empty"
+    flows = {"7": {"gt": 12.0, "p": {"1": [-30.0, 5.2]}}}
+    assert build.page_gamelog(log, {1: {}}, [{"id": 7, "tip": 1_800_000_000}], cal, flows=flows)["1"][0][12:] == [-30.0, 12.0, 5.2]
     assert abs(own[1]["plays_pm"] - (1000 + 0.44 * 200) / 2000) < 1e-9, "plays a minute: shots, free-throw trips, turnovers"
+
+
+def test_game_flow():
+    from seasonkit import pull
+
+    def play(q, clock, home, away, who=(), sub=False):
+        return {"period": {"number": q}, "clock": {"displayValue": clock}, "homeScore": home, "awayScore": away,
+                "type": {"text": "Substitution" if sub else "Shot"}, "participants": [{"athlete": {"id": w}} for w in who]}
+    box = {"players": [{"team": {"id": "1"}, "statistics": [{"labels": ["MIN"], "athletes": [
+        {"athlete": {"id": "a"}, "stats": ["30"]}, {"athlete": {"id": "b"}, "stats": ["10"]}]}]},
+        {"team": {"id": "2"}, "statistics": [{"labels": ["MIN"], "athletes": [{"athlete": {"id": "c"}, "stats": ["30"]}]}]}]}
+    header = {"competitions": [{"competitors": [{"team": {"id": "1"}, "score": "120"}, {"team": {"id": "2"}, "score": "90"}]}]}
+    plays = [play(3, "1:00", 80, 70), play(4, "11:00", 90, 70, ["a"]), play(4, "10:00", 92, 70),
+             play(4, "8:00", 100, 75), play(4, "7:00", 102, 75, ["b", "a"], sub=True), play(4, "0:00", 120, 90)]
+    f = pull.game_flow({"plays": plays, "boxscore": box, "header": header})
+    # 20 up at 11:00 is short of 25; 22 at 10:00 too; 25 at 8:00 (20 needed) holds to the end: 8 minutes
+    assert f["gt"] == 8.0, f
+    assert f["p"]["a"] == [30.0, 1.0], "on from the start of the 4th, off at 7:00: 1 of the 8 minutes"
+    assert f["p"]["b"] == [30.0, 7.0], "entered at 7:00 and stayed"
+    assert f["p"]["c"][0] == -30.0
+    ot = pull.game_flow({"plays": plays + [play(5, "4:00", 120, 90)], "boxscore": box, "header": header})
+    assert ot["gt"] == 0, "no garbage time in an overtime game"
 
 
 def test_takes():

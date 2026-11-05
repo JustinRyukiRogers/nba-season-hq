@@ -118,10 +118,77 @@ def depth_charts():
         return dict(ex.map(one, TEAMS))
 
 
+GARBAGE = ((540, 25), (360, 20), (0, 15))  # 4th quarter: above this many seconds left, a lead this big is garbage time
+
+
+def _clock(text):
+    """ESPN's game clock ("7:36", or "22.4" in the last minute) -> seconds left in the period."""
+    m, _, sec = (text or "0").rpartition(":")
+    return 60 * float(m or 0) + float(sec or 0)
+
+
+def game_flow(data):
+    """Garbage time in one game from ESPN's play-by-play -> {"gt": minutes of it, "p": {player id: [his
+    team's final margin, minutes he played in it]}} for everyone who played, or None without plays.
+    Garbage time is the end of the 4th quarter from the first play after which the lead never drops
+    below GARBAGE (25 with 9+ minutes left, 20 with 6+, 15 after); none in a game that went to overtime.
+    Who is on the floor comes from substitutions ("A enters the game for B"); a player whose first play
+    of the quarter is anything but entering started it on the floor."""
+    plays = data.get("plays") or []
+    if not plays:
+        return None
+    score = {c["team"]["id"]: float(c.get("score") or 0)
+             for c in ((data.get("header") or {}).get("competitions") or [{}])[0].get("competitors") or []}
+    played = {}
+    for team in (data.get("boxscore") or {}).get("players") or []:
+        block = (team.get("statistics") or [{}])[0]
+        col = (block.get("labels") or []).index("MIN") if "MIN" in (block.get("labels") or []) else None
+        for a in block.get("athletes") or []:
+            try:
+                if col is not None and float((a.get("stats") or [])[col]) > 0:
+                    played[a["athlete"]["id"]] = team["team"]["id"]
+            except (ValueError, IndexError):
+                pass
+    if len(score) != 2 or not played:
+        return None
+    margin = {t: score[t] - sum(v for u, v in score.items() if u != t) for t in score}
+    q4 = [p for p in plays if (p.get("period") or {}).get("number") == 4]
+    start = None
+    if q4 and all((p.get("period") or {}).get("number", 0) <= 4 for p in plays):
+        for p in reversed(q4):
+            left = _clock((p.get("clock") or {}).get("displayValue"))
+            need = next(n for s, n in GARBAGE if left > s or s == 0)
+            if abs(float(p.get("homeScore") or 0) - float(p.get("awayScore") or 0)) < need:
+                break
+            start = left
+    out = {}
+    for pid in played:
+        on, since, secs = None, 720.0, 0.0
+        for p in q4:
+            who = [x["athlete"]["id"] for x in p.get("participants") or [] if x.get("athlete")]
+            if pid not in who:
+                continue
+            left = _clock((p.get("clock") or {}).get("displayValue"))
+            sub = (p.get("type") or {}).get("text") == "Substitution" and len(who) == 2
+            if on is None:
+                on = not (sub and who[0] == pid)
+            if sub and who[0] == pid and not on:
+                on, since = True, left
+            elif sub and who[1] == pid and on:
+                if start is not None:
+                    secs += max(0.0, min(since, start) - left)
+                on = False
+        if on and start is not None:
+            secs += min(since, start)
+        out[pid] = [margin[played[pid]], round(secs / 60, 1)]
+    return {"gt": round((start or 0) / 60, 1), "p": out}
+
+
 def team_boxes(game_ids):
-    """Each finished game's team totals, for usage rates -> {game id: [[minutes, FGA, FTA, turnovers,
-    [player ids]], ...] one per team}. Minutes are the players' summed (240 plus 25 a period of overtime);
-    turnovers are the players' (not team turnovers), as usage counts them. A game that fails is left out."""
+    """Each finished game's team totals, for usage rates, and its garbage time (game_flow) -> {game id:
+    [[[minutes, FGA, FTA, turnovers, [player ids]], ...] one per team, flow]}. Minutes are the players'
+    summed (240 plus 25 a period of overtime); turnovers are the players' (not team turnovers), as usage
+    counts them. A game that fails is left out; the box or the flow is None when ESPN's is incomplete."""
     def one(gid):
         try:
             data = espn.get_json(espn.SITE + "/site/v2/sports/basketball/nba/summary", {"event": gid}, timeout=30)
@@ -132,7 +199,8 @@ def team_boxes(game_ids):
             block = (team.get("statistics") or [{}])[0]
             col = {k: i for i, k in enumerate(block.get("labels") or [])}
             if not {"MIN", "FG", "FT", "TO"} <= col.keys():
-                return gid, None
+                out = None
+                break
             t, ids = [0.0, 0.0, 0.0, 0.0], []
             for a in block.get("athletes") or []:
                 row = a.get("stats") or []
@@ -145,9 +213,14 @@ def team_boxes(game_ids):
                 t = [t[0] + mins, t[1] + fga, t[2] + fta, t[3] + to]
                 ids.append(int(a["athlete"]["id"]))
             out.append(t + [ids])
-        return gid, out if len(out) == 2 and all(x[0] > 0 for x in out) else None
+        box = out if out and len(out) == 2 and all(x[0] > 0 for x in out) else None
+        try:
+            flow = game_flow(data)
+        except Exception:
+            flow = None
+        return gid, [box, flow] if box or flow else None
     with ThreadPoolExecutor(8) as ex:
-        return {gid: box for gid, box in ex.map(one, game_ids) if box}
+        return {gid: got for gid, got in ex.map(one, game_ids) if got}
 
 
 def injuries():

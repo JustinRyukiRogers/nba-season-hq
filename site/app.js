@@ -1357,17 +1357,29 @@ function viewLeague() {
 }
 
 // ----- player card -----
+// A game's result for the player card from the game log's flow columns [his team's margin, garbage
+// minutes, his minutes in them]: "L 30", plus a blowout chip when the game had BLOWOUT_MIN+ of garbage time.
+const BLOWOUT_MIN = 4;
+function gameResult(g) {
+  if (g[12] == null) return '';
+  const res = `${g[12] > 0 ? 'W' : 'L'} ${Math.abs(g[12])}`;
+  if (!(g[13] >= BLOWOUT_MIN)) return res;
+  const sat = Math.max(0, g[13] - g[14]);
+  return `${res} <span class="chip dtd">blowout</span> <span class="muted small">${sat >= 1 ? `sat ${n0(sat)} of ${n0(g[13])} garbage min` : `played all ${n0(g[13])} garbage min`}</span>`;
+}
+
 function openPlayer(id) {
   const p = P(id);
   if (!p) return;
   const r = p.ros, i = p.inj;
   const statRows = [['This season', 'season'], ['Last 7 days', 'l7'], ['Last 15 days', 'l15'], ['Last 30 days', 'l30'], ['Last season', 'last'], ['ESPN projection', 'proj']]
     .filter(([, k]) => p.stats[k]).map(([l, k]) => { const s = p.stats[k]; return `<tr><td>${l}</td><td class="r">${s[0]}</td><td class="r">${n1(s[1])}</td><td class="r">${n1(s[2])}</td></tr>`; }).join('');
-  const start = S.data.calendar.start;
-  const recent = (p.recent || []).filter(g => g[0] >= 1).map(g => {
-    const day = new Date(isoDate(start).getTime() + (g[0] - 1) * 86400000).toISOString().slice(0, 10);
-    return `<tr><td>${dayShort(day)}</td><td class="r">${g[2]}</td><td class="r">${n1(g[1])}</td></tr>`;
-  }).join('');
+  const start = S.data.calendar.start, log = (S.data.gamelog || {})[String(id)];
+  const recent = log ? log.slice(-10).reverse().map(g => `<tr><td>${dayShort(dayIso(g[0]))}</td><td class="r">${n0(g[2])}</td><td class="r">${n1(g[1])}</td><td>${gameResult(g)}</td></tr>`).join('')
+    : (p.recent || []).filter(g => g[0] >= 1).map(g => {
+      const day = new Date(isoDate(start).getTime() + (g[0] - 1) * 86400000).toISOString().slice(0, 10);
+      return `<tr><td>${dayShort(day)}</td><td class="r">${g[2]}</td><td class="r">${n1(g[1])}</td><td></td></tr>`;
+    }).join('');
   const sched = (p.next || []).map(([d, opp, home, tip]) => `<tr><td>${dayShort(d)}</td><td>${home ? 'vs' : '@'} ${esc(opp)}</td><td>${timeLabel(tip)}</td><td class="r">${p.odds && p.odds[d] != null ? Math.round(100 * p.odds[d]) + '%' : ''}</td></tr>`).join('');
   const news = (p.news || []).map(n => `<div class="news"><div class="when">${esc(n.at ? whenLabel(Date.parse(n.at) / 1000) + ' · ' + ago(Date.parse(n.at) / 1000) : '')}${n.kind === 'article' ? ' · ESPN article' : ''}</div>
     <div class="hl">${esc(n.headline)}</div>${n.story ? `<div class="st">${esc(n.story)}</div>` : ''}</div>`).join('');
@@ -1398,7 +1410,8 @@ function openPlayer(id) {
         : `${plural(p.week.games, 'game')}, ${n1(p.week.points)} expected points if he starts them all`}</dd></dl></div>
     ${sched ? `<div class="sec"><div class="h">Next games</div><table class="tbl"><thead><tr><th>Day</th><th>Game</th><th>Tip</th><th class="r">Plays</th></tr></thead><tbody>${sched}</tbody></table></div>` : ''}
     ${statRows ? `<div class="sec"><div class="h">Fantasy points</div><table class="tbl"><thead><tr><th></th><th class="r">GP</th><th class="r">Min</th><th class="r">Per game</th></tr></thead><tbody>${statRows}</tbody></table></div>` : ''}
-    ${recent ? `<div class="sec"><div class="h">Latest games</div><table class="tbl"><thead><tr><th>Day</th><th class="r">Min</th><th class="r">Points</th></tr></thead><tbody>${recent}</tbody></table></div>` : ''}
+    ${recent ? `<div class="sec"><div class="h">Latest games</div><table class="tbl"><thead><tr><th>Day</th><th class="r">Min</th><th class="r">Points</th><th>Result</th></tr></thead><tbody>${recent}</tbody></table>
+      ${log && log.some(g => g[13] >= BLOWOUT_MIN) ? `<p class="small muted">Blowout: ${BLOWOUT_MIN}+ minutes of garbage time (a 4th-quarter lead of 25 with 9+ minutes left, 20 with 6+, 15 after, that never closed). "Sat 7 of 12" means 12 minutes of garbage time and he was on the bench for 7, which is why his minutes ran short; the projections still count those games as they are.</p>` : ''}</div>` : ''}
     ${news ? `<div class="sec"><div class="h">News</div>${news}</div>` : ''}`;
   $('#drawer').hidden = false;
   $('#scrim').hidden = false;
