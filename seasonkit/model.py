@@ -54,6 +54,12 @@ NEAR_PRIOR_GAMES = 2.0
 FALLBACK_PRIOR_GAMES = 6.0   # players the board never valued: their own games take over quickly
 DEEP_BENCH = 12.0            # their per-game prior when ESPN does not project them
 FALLBACK_LAST_GAMES = 30.0   # games of last season's average that count as much as DEEP_BENCH
+# Share of games for a player with only last season to go on: the 50-game baseline blended with the
+# share of his team's games he has played this season, this many team games counting as much as the
+# baseline. Backtested 2026-11-05 on 2024-25 and 2025-26 (research/fallback_games.py; unprojected
+# players who played last season, checkpoints 10-45 days in): never worse than the flat baseline,
+# error cut by half or more for those averaging 15+. Last season's games instead of 50 did worse.
+FALLBACK_SHARE_GAMES = 10.0
 DTD_PLAY = 0.6               # chance a day-to-day player plays his next game
 # A game the NBA's official injury report tags (it keeps apart what ESPN calls day-to-day): how often
 # a tagged player played, two seasons of the 1 PM and 5 PM ET reports (research/injury_tags.py,
@@ -130,6 +136,10 @@ class Calendar:
 
     def weight(self, week):
         return 1.0 if week < self.regular else PLAYOFF_WEEK_WEIGHT
+
+    def played(self, team):
+        """A team's fantasy-season games already tipped off."""
+        return [g for g in self.by_team.get(team, []) if g["tip"] <= self.now and g["date"] >= self.start]
 
     def remaining(self, team):
         """A team's games not yet tipped off, inside the fantasy season."""
@@ -360,6 +370,11 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
     out, back, over = absence(p, injuries.get(p["id"]), note, calendar.today, calendar.end)
     out_days = (back - calendar.today).days if out and back else None
     base_share = durability(cal_fit, espn_gp, flags)
+    if source == "last season" and gp:
+        team_gp = len(calendar.played(p["team"])) if p["team"] in calendar.by_team else 0
+        if team_gp:
+            seen = min(0.92, gp / team_gp)
+            base_share = (team_gp * seen + FALLBACK_SHARE_GAMES * base_share) / (team_gp + FALLBACK_SHARE_GAMES)
     back_share = durability(cal_fit, espn_gp, flags, after_layoff=True) if out else base_share
     factor = comeback(out_days) if out else 1.0
     odds = game_odds(p, games, injuries.get(p["id"]), note, calendar.today, calendar.end, base_share, back_share, factor,
