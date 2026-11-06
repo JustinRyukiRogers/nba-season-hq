@@ -452,6 +452,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .h2h-day .dd.up { color: var(--me); }
 .h2h-day .dd.down { color: var(--them); }
 .h2h-day .ds { font-size: 10.5px; color: var(--muted); }
+.h2h-day.past { background: var(--wash); }
+.h2h-day.past .db { position: relative; }
+.h2h-day.past .db i { opacity: 0.8; }
+.h2h-day .db .exp { position: absolute; left: 50%; width: 26px; margin-left: -13px; height: 0; border-top: 2px dashed var(--ink); }
+.h2h-day .ds b { font-weight: 700; }
+.h2h-day .ds b.pos { color: var(--good-ink); }
+.h2h-day .ds b.neg { color: var(--serious-ink); }
+.fo-pts small.neg { color: var(--serious-ink); }
+.h2h-days-cap { margin: -6px 0 12px; }
 
 .h2h-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 999px) { .h2h-body { grid-template-columns: 1fr; } .h2h-board { grid-template-columns: 1fr 1fr; } .h2h-mid { grid-column: 1 / -1; order: 3; } }
@@ -546,3 +555,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 @media (max-width: 759px) { .fo-notes { grid-template-columns: 1fr; } .fo-note.them { grid-column: 1; text-align: left; } }
 .h2h-form { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .h2h-form b { color: var(--ink-2); }
+
+/* League tab: week by week */
+.wk-tbl td.wk-cell { white-space: nowrap; line-height: 1.25; }
+.wk-tbl td.vs-me { box-shadow: inset 0 0 0 2px var(--c-neg); border-radius: 6px; }

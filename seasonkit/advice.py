@@ -949,6 +949,51 @@ def matchup(league, players, me, calendar, ahead=0):
     return out
 
 
+WEEK_TABLE_WEEKS = 4     # the League tab's week table: this week and the next three
+
+
+def week_outlook(league, players, calendar, past=None, weeks=WEEK_TABLE_WEEKS):
+    """Every team's points and expected starts for this week and the next few, from its roster as it is
+    (no moves; IR left out), each week's best daily lineups as in `matchup`. This week adds the score so
+    far (ESPN's live total), anyone still in today's games, and the starters who played on its finished
+    days (past: build.past_days). -> {"weeks": [{period, dates}], "teams": {team id: [{period, opp,
+    score, points, starts, games}]}}; games = expected games played by the roster, starts = those that
+    fit the lineup (this week: plus the starts already made, which count as both)."""
+    week = calendar.current_week()
+    if week is None:
+        return None
+    span = [w for w in range(week, min(len(calendar.weeks), week + weeks))]
+    out = {"weeks": [{"period": w + 1, "dates": [str(calendar.weeks[w][0]), str(calendar.weeks[w][1])]} for w in span],
+           "teams": {}}
+    for tid in league["teams"]:
+        tid = int(tid)
+        ids = [e["id"] for e in roster(league, tid, include_ir=False)]
+        rows = []
+        for w in span:
+            lo, hi = calendar.weeks[w]
+            days = calendar.days_left_in_week(w) if w == week else [lo + timedelta(days=i) for i in range((hi - lo).days + 1)]
+            pts, per_day, _ = project_days(ids, days, players, league["starting"], calendar)
+            starts = sum(n for _, _, n in per_day)
+            games = sum(players[pid]["odds"].get(str(d), 0.0) for pid in ids if pid in players for d in days
+                        if (g := calendar.game_on(players[pid]["team"], d)) and g["tip"] > calendar.now)
+            m = next((m for m in league["matchups"] if m["period"] == w + 1 and tid in (m["home"], m["away"])), None)
+            opp = (m["away"] if m["home"] == tid else m["home"]) if m else None
+            score = 0.0
+            if w == week and m:
+                score = (m["home_pts"] if m["home"] == tid else m["away_pts"]) or 0.0
+                live = live_today(league, players, tid, calendar)
+                if live:
+                    pts += live["left"]
+                    starts += live["starts"]
+                done = sum(x["played"] for x in (past or {}).get(tid, []))
+                starts += done
+                games += done + (live["starts"] if live else 0.0)
+            rows.append({"period": w + 1, "opp": opp, "score": round(score, 1), "points": round(score + pts, 1),
+                         "starts": round(starts, 1), "games": round(games, 1)})
+        out["teams"][str(tid)] = rows
+    return out
+
+
 def live_today(league, players, tid, calendar):
     """Today's starters whose games have tipped, as they stand -> {today: points so far, left: points
     still expected from games in progress, starts, expected (what they were projected at tip-off),

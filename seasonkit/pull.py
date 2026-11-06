@@ -43,6 +43,13 @@ def rosters(cookies, scoring_period):
                          cookies=cookies, timeout=30).get("teams") or []
 
 
+def boxscore(cookies, scoring_period):
+    """Every matchup's lineups and points for one scoring day (mBoxscore): the slot each player held
+    that day and what he scored. mRoster for a past day does not return that day's slots; this does."""
+    return espn.get_json(espn.league_url(), {"view": "mBoxscore", "scoringPeriodId": scoring_period},
+                         cookies=cookies, timeout=60).get("schedule") or []
+
+
 def pool(cookies, limit=POOL_LIMIT, games=2):
     """Rostered players and the best-owned free agents, as this league sees them, each with his
     `games` most recent games (last season's too, when this one has fewer; about 500 bytes each)."""

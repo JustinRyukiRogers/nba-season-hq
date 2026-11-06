@@ -295,11 +295,27 @@ function h2hHero() {
 
   // day strip: mirrored bars, you up in blue, them down in red
   const days = A.lineups.map((a, i) => [a, B.lineups[i]]);
-  if (!S.hd || !days.some(([a]) => a.date === S.hd)) S.hd = days.length ? days[0][0].date : null;
+  // this week's finished days: what each side's starters scored, and were expected to
+  const past = !m.ahead && m.past ? m.past.me.map((a, i) => [a, m.past.them[i]]).filter(([a, b]) => b && a.date === b.date) : [];
+  const dates = [...past.map(([a]) => a.date), ...days.map(([a]) => a.date)];
+  if (!S.hd || !dates.includes(S.hd)) S.hd = days.length ? days[0][0].date : past.length ? past[past.length - 1][0].date : null;
   // today, once games are under way: the points scored so far plus what is still expected
   const dayPts = (lu, side) => lu.date === d.calendar.today && !m.ahead && m[side].live ? m[side].live.today + lu.points : lu.points;
-  const top = Math.max(1, ...days.flatMap(([a, b]) => [dayPts(a, 'me'), dayPts(b, 'them')]));
-  const strip = days.map(([a, b]) => {
+  const top = Math.max(1, ...days.flatMap(([a, b]) => [dayPts(a, 'me'), dayPts(b, 'them')]),
+    ...past.flatMap(([a, b]) => [a.actual, a.expected, b.actual, b.expected]));
+  const h = x => (42 * x / top).toFixed(0);
+  const vsExp = x => `<b class="${x.actual - x.expected >= 0.5 ? 'pos' : x.actual - x.expected <= -0.5 ? 'neg' : ''}">${signed(x.actual - x.expected)}</b>`;
+  const pastStrip = past.map(([a, b]) => {
+    const diff = a.actual - b.actual, none = !a.starts && !b.starts;
+    return `<button class="h2h-day past${a.date === S.hd ? ' on' : ''}" data-hd="${a.date}"
+        data-tip="${esc(dayLabel(a.date))}, final: you ${n0(a.actual)} (expected ${n0(a.expected)} from ${a.played} starts), ${esc(opp.abbrev)} ${n0(b.actual)} (expected ${n0(b.expected)} from ${b.played})">
+      <span class="dn">${wkday(a.date)} <em>final</em></span>
+      <span class="db"><i class="me" style="height:${h(a.actual)}px"></i>${a.expected ? `<b class="exp" style="bottom:${h(a.expected)}px"></b>` : ''}</span>
+      <span class="db down"><i class="them" style="height:${h(b.actual)}px"></i>${b.expected ? `<b class="exp" style="top:${h(b.expected)}px"></b>` : ''}</span>
+      <span class="dd ${diff >= 0.5 ? 'up' : diff <= -0.5 ? 'down' : ''}">${none ? '–' : signed(diff)}</span>
+      <span class="ds">${none ? 'no games' : `${vsExp(a)} v ${vsExp(b)}`}</span></button>`;
+  }).join('');
+  const strip = pastStrip + days.map(([a, b]) => {
     const x = dayPts(a, 'me'), y = dayPts(b, 'them'), diff = x - y;
     return `<button class="h2h-day${a.date === S.hd ? ' on' : ''}" data-hd="${a.date}"
         data-tip="${esc(dayLabel(a.date))}: you ${n0(x)} from ${n1(a.starts)} starts, ${esc(opp.abbrev)} ${n0(y)} from ${n1(b.starts)}">
@@ -312,9 +328,34 @@ function h2hHero() {
 
   return `<section class="h2h">${head}
     <div class="h2h-days" role="tablist" aria-label="Days">${strip}</div>
-    <div class="h2h-body"><div>${h2hFaceoff(m, days.find(([a]) => a.date === S.hd), A, B)}</div>
+    ${past.length ? '<p class="cap h2h-days-cap">Finished days show what each lineup scored; the line marks what its starters were expected to score, and below, each side against that.</p>' : ''}
+    <div class="h2h-body"><div>${past.some(([a]) => a.date === S.hd) ? h2hPastDay(m, past.find(([a]) => a.date === S.hd)) : h2hFaceoff(m, days.find(([a]) => a.date === S.hd), A, B)}</div>
       <div>${h2hCalls(m)}${h2hMoves(m)}</div></div>
     ${h2hCarry(m, A, B)}</section>`;
+}
+// A finished day: the lineups each side started, slot by slot, what each starter scored against what he
+// was expected to (chance he plays x points a game, on today's numbers).
+function h2hPastDay(m, pair) {
+  if (!pair) return '';
+  const [a, b] = pair, opp = team(m.opp);
+  const cell = (r, side) => {
+    if (!r || !r[1]) return `<div class="fo-cell ${side} empty">${r && !r[1] ? 'not in the player pool' : 'empty'}</div>`;
+    const [, pid, exp, act, game] = r, p = P(pid), off = act - exp;
+    return `<div class="fo-cell ${side}" data-pid="${pid}"><div class="fo-nm">${esc(p.name)}</div>
+      <div class="fo-meta">${esc(p.team)} · ${game ? `expected ${n1(exp)}` : 'no game'}</div>
+      <div class="fo-pts">${game ? `${n0(act)} <small class="${off >= 0.5 ? 'pos' : off <= -0.5 ? 'neg' : 'muted'}">${signed(off)}</small>` : '<span class="muted">–</span>'}</div></div>`;
+  };
+  const rows = a.rows.map((r, i) => {
+    const t = b.rows[i], x = r[3], y = t ? t[3] : 0;
+    return `<div class="fo-row ${x > y + 0.5 ? 'win' : y > x + 0.5 ? 'lose' : ''}">${cell(r, 'me')}<div class="fo-slot">${esc(r[0])}</div>${cell(t, 'them')}</div>`;
+  }).join('');
+  const head = x => `${n0(x.actual)} <small>expected ${n0(x.expected)} · ${x.played} played</small>`;
+  return `<div class="fo-head"><span class="me">You · ${head(a)}</span>
+      <span class="fo-title">${esc(dayLabel(a.date))} · final</span>
+      <span class="them">${esc(opp.abbrev)} · ${head(b)}</span></div>
+    <div class="fo">${rows}</div>
+    <p class="cap" style="margin-top:8px">The lineups as started that day (ESPN's box score). Expected is the chance he plays × his points a game
+      on today's numbers, so that day's own game is already in it a little. Bench points don't count and aren't shown.</p>`;
 }
 // One day's best lineups, slot by slot: yours on the left, theirs on the right.
 function h2hFaceoff(m, pair, A, B) {
@@ -1330,6 +1371,32 @@ function viewInjuries() {
 }
 
 // ----- League -----
+// Every team's points and expected starts, this week and the next few, rosters as they are (no moves).
+// This week counts the score so far and the starts already made.
+function weekTable() {
+  const W = S.data.week_table, lg = S.data.league;
+  if (!W || !W.weeks.length) return '';
+  const now = S.data.calendar.week, mine = W.teams[String(me())] || [];
+  const tids = Object.keys(W.teams).sort((a, b) => W.teams[b][0].points - W.teams[a][0].points);
+  const best = W.weeks.map((_, i) => Math.max(...tids.map(t => W.teams[t][i].points)));
+  const md = iso => isoDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const heads = W.weeks.map((w, i) => `<th class="r">Week ${w.period}${w.period === now + 1 ? ' <span class="muted">now</span>' : ''}<div class="muted small">${esc(md(w.dates[0]))} – ${esc(md(w.dates[1]))}</div></th>`).join('');
+  const rows = tids.map(tid => {
+    const t = lg.teams[tid];
+    const cells = W.teams[tid].map((c, i) => {
+      const vsMe = c.opp === me(), per = c.starts ? c.points / c.starts : 0;
+      const tip = `${t.abbrev}, week ${c.period}: ${n0(c.points)} points from ${n1(c.starts)} expected starts (${n1(c.games)} games, ${n1(per)} a start)`
+        + `${c.score ? `; ${n0(c.score)} scored so far` : ''}${c.opp ? `; plays ${abbr(c.opp)}` : ''}`;
+      return `<td class="r wk-cell${vsMe ? ' vs-me' : ''}" data-tip="${esc(tip)}"><b class="${c.points >= best[i] ? 'pos' : ''}">${n0(c.points)}</b>
+        <span class="muted small">${n1(c.starts)} st</span><div class="muted small">${c.opp ? `v ${esc(abbr(c.opp))}` : ''}</div></td>`;
+    }).join('');
+    return `<tr class="${Number(tid) === me() ? 'mine' : ''}"><td><b>${esc(t.abbrev)}</b> <span class="muted small">${esc(t.name)}</span></td>${cells}</tr>`;
+  }).join('');
+  return `<div class="panel"><h3>Week by week</h3><p class="cap">Each team's projected points and expected starts (games that fit its lineup) per matchup week,
+    rosters as they are today with no more moves and players in IR left out. This week adds the points scored so far and the starts already made.
+    Outlined: the team you play that week. Hover a cell for games and points a start.</p>
+    <div class="scroll-x"><table class="tbl wk-tbl"><thead><tr><th>Team</th>${heads}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
 function viewLeague() {
   const d = S.data, lg = d.league;
   const teams = Object.values(lg.teams).sort((a, b) => (b.record.w - a.record.w) || (b.record.pf - a.record.pf));
@@ -1346,7 +1413,7 @@ function viewLeague() {
     return `<tr class="${t.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(t.team))}</b> ${what.join('; ')}</td></tr>`;
   }).join('');
   const strength = standingsRows();
-  return `${strength.length ? `<div class="panel"><h3>Roster strength from here</h3><p class="cap">How many points a week each team should score from here if nobody makes another move (its best lineup every day, injuries counted): the Proj/wk column. Hover a bar for its record and points scored so far.</p>
+  return `${weekTable()}${strength.length ? `<div class="panel"><h3>Roster strength from here</h3><p class="cap">How many points a week each team should score from here if nobody makes another move (its best lineup every day, injuries counted): the Proj/wk column. Hover a bar for its record and points scored so far.</p>
     ${Charts.hbars(strength, { labelWidth: 130 })}</div>` : ''}
     <h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r" title="Points for: fantasy points this team has scored this season">Scored</th><th class="r" title="Points against: fantasy points scored against this team">Allowed</th><th class="r" title="Points a week from each roster's best daily lineups over the rest of the season, as it stands">Proj/wk</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
     <p class="small muted"><b>Proj/wk</b>: points a week each roster's starters should score over the rest of the season if it is held as is (players in IR left out).</p>

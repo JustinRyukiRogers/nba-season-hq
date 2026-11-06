@@ -6,6 +6,7 @@ The hosted copy runs this from GitHub Actions every 20 minutes, then encrypts th
 """
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 from draftkit import calibrate, espn
@@ -185,6 +186,61 @@ def attach_live(league, players, calendar, problems):
         elif s["state"] == "pre":
             left = 1.0
         p["live"] = {"pts": round(pts, 1), "min": mins, "state": s["state"], "left": round(left, 3), "detail": s["detail"]}
+
+
+def past_days(cookies, league, players, calendar, problems):
+    """This week's finished days for every team: the lineup each started (ESPN's box score for the day)
+    and what it scored, against what those starters were expected to score (chance he plays x points
+    a game, on today's numbers, so a day's own games are already in them a little). ->
+    {team id: [{date, actual, expected, starts (expected), played (starters who scored), rows: [[slot,
+    pid, expected, actual, had a game]]}]}"""
+    week = calendar.current_week()
+    if week is None:
+        return {}
+    days = []
+    d = max(calendar.weeks[week][0], calendar.start)
+    while d < calendar.today:
+        days.append(d)
+        d += timedelta(days=1)
+    if not days:
+        return {}
+    starting = set(league["starting"])
+
+    def one(day):
+        return day, pull.boxscore(cookies, (day - calendar.start).days + 1)
+    try:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            boxes = list(ex.map(one, days))
+    except Exception as err:
+        problems.append("past days' box scores failed (%s); this week shows only the days left" % type(err).__name__)
+        return {}
+    out = {int(tid): [] for tid in league["teams"]}
+    for day, sched in boxes:
+        for m in sched:
+            if m.get("matchupPeriodId") != week + 1:
+                continue
+            for side in (m.get("home") or {}, m.get("away") or {}):
+                tid = side.get("teamId")
+                if tid not in out:
+                    continue
+                rows = []
+                for e in (side.get("rosterForCurrentScoringPeriod") or {}).get("entries") or []:
+                    slot = SLOT_NAMES.get(e.get("lineupSlotId"))
+                    if slot not in starting:
+                        continue
+                    pid, p = e["playerId"], players.get(e["playerId"])
+                    game = bool(p and calendar.game_on(p["team"], day))
+                    exp = model.NEAR_TERM_PLAY * p["ros"]["fppg"] if game else 0.0
+                    rows.append([slot, pid if p else None, round(exp, 1),
+                                 round((e.get("playerPoolEntry") or {}).get("appliedStatTotal") or 0.0, 1), game])
+                rows.sort(key=lambda r: league["starting"].index(r[0]))
+                out[tid].append({"date": str(day), "actual": round(sum(r[3] for r in rows), 1),
+                                 "expected": round(sum(r[2] for r in rows), 1),
+                                 "starts": round(sum(model.NEAR_TERM_PLAY for r in rows if r[4]), 1),
+                                 "played": sum(1 for r in rows if r[4] and r[3]), "rows": rows})
+    for v in out.values():
+        v.sort(key=lambda x: x["date"])
+    return out
 
 
 def _split(stats, key_id):
@@ -434,6 +490,10 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     for mt in (match, match_next):   # the head-to-head: both lineups a day, their moves, the calls
         advice.h2h(league, players, me, calendar, mt, plan, league_moves, txs)
     opp = match["opp"] if match else None
+    past = past_days(cookies, league, players, calendar, problems)
+    if match and match.get("them"):    # this week's finished days: what each side's starters scored and were expected to
+        match["past"] = {"me": past.get(me, []), "them": past.get(opp, [])}
+    week_table = advice.week_outlook(league, players, calendar, past)
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)
 
@@ -471,7 +531,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
         "plan": plan, "trades": trades, "league_moves": league_moves,
-        "matchup": match, "next_matchup": match_next, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
+        "matchup": match, "next_matchup": match_next, "week_table": week_table, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
         "gamelog": page_gamelog(log, players, games, calendar, own, boxes, flows),
