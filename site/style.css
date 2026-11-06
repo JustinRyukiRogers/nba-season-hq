@@ -559,3 +559,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* League tab: week by week */
 .wk-tbl td.wk-cell { white-space: nowrap; line-height: 1.25; }
 .wk-tbl td.vs-me { box-shadow: inset 0 0 0 2px var(--c-neg); border-radius: 6px; }
+
+.meta .rk { color: var(--ink-2); font-weight: 600; }
+.ranks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ranks div { display: flex; flex-direction: column; }
+.ranks b { font-size: 1.25em; }
+.ranks span { font-size: 0.8em; opacity: 0.75; }
+@media (max-width: 520px) { .ranks { grid-template-columns: repeat(2, 1fr); } }

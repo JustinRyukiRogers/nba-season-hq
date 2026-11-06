@@ -35,6 +35,7 @@ LEAGUE_MIN_PER_PLAY = 2.15             # team minutes per team play (FGA + 0.44 
 OWN_MIN_MINUTES = 500                  # under this many minutes last season, ESPN's projection joins his record
 OWN_TS_SHOTS = 100                     # shots (FGA + FTA) before his own true shooting is shown
 OWN_SHRINK = {"2": 150, "3": 200, "ft": 50}  # league-average attempts added before taking his own make rates
+RANK_PG_SHARE = 0.6                    # a per-game rank needs 60% of his team's games so far (the NBA's line is 65 of 82)
 DEPTH_MAX_AGE = 3 * 3600               # depth charts change slowly; refetch (30 requests) at most this often
 REPORT_MAX_AGE = 14 * 60               # the official injury report: look for a newer one at most this often
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
@@ -425,6 +426,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     fas = [p for p in players.values() if p["owner"] == 0]
     replacement = model.replacement_level(fas)
     model.finish_values(players.values(), replacement)
+    rank_players(players, calendar)
     attach_live(league, players, calendar, problems)
 
     # schedule: the next week of games for every player in the pool, for cards and stream lists
@@ -715,6 +717,23 @@ def depth_roles(charts, players):
                     p["depth"] = {"pos": pos, "rank": rank, "now": rank - len(out), "out": list(out)}
                 if p["status"] == "OUT":
                     out.append(p["name"])
+
+
+def rank_players(players, calendar):
+    """p["rank"]: where he stands in the pool by points so far ("total"), points a game so far ("pg", only once
+    he has played RANK_PG_SHARE of his team's games), projected points a game ("ros_pg") and value ("ros") from here."""
+    def order(key, pool):
+        return {p["id"]: i + 1 for i, p in enumerate(sorted(pool, key=key, reverse=True))}
+    played = [p for p in players.values() if (p["stats"].get("season") or [0])[0]]
+    team_gp = {t: len(calendar.played(t)) for t in {p["team"] for p in played}}
+    qualified = [p for p in played if p["stats"]["season"][0] >= RANK_PG_SHARE * team_gp[p["team"]]]
+    total = order(lambda p: p["stats"]["season"][0] * p["stats"]["season"][2], played)
+    pg = order(lambda p: p["stats"]["season"][2], qualified)
+    ros = order(lambda p: p["ros"]["value"], players.values())
+    ros_pg = order(lambda p: p["ros"]["fppg"], [p for p in players.values() if not p["ros"]["season_over"]])
+    for pid, p in players.items():
+        p["rank"] = {"total": total.get(pid), "pg": pg.get(pid), "ros": ros.get(pid), "ros_pg": ros_pg.get(pid),
+                     "gp": (p["stats"].get("season") or [0])[0], "team_gp": team_gp.get(p["team"])}
 
 
 def page_player(p, calendar):

@@ -651,6 +651,20 @@ def test_week_outlook():
     assert len(t["weeks"]) == 1, "no weeks past the season"
 
 
+def test_rank_players():
+    from seasonkit import build
+    cal = types.SimpleNamespace(played=lambda team: [None] * 10)
+    def p(pid, gp, fppg, ros_fppg, value):
+        return {"id": pid, "team": "BOS", "stats": {"season": [gp, 30.0, fppg]} if gp else {},
+                "ros": {"fppg": ros_fppg, "value": value, "season_over": False}}
+    players = {1: p(1, 10, 40.0, 42.0, 900.0), 2: p(2, 3, 60.0, 45.0, 500.0), 3: p(3, 8, 30.0, 30.0, 1000.0), 4: p(4, 0, 0, 50.0, 10.0)}
+    build.rank_players(players, cal)
+    r = {pid: q["rank"] for pid, q in players.items()}
+    assert [r[i]["total"] for i in (1, 3, 2, 4)] == [1, 2, 3, None], "total points so far: %s" % r
+    assert r[2]["pg"] is None and r[1]["pg"] == 1 and r[3]["pg"] == 2, "3 of 10 games is short of the 60% line: %s" % r
+    assert r[4]["ros_pg"] == 1 and r[3]["ros"] == 1 and r[2]["ros"] == 3, "rest of season ranks everyone: %s" % r
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

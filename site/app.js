@@ -82,7 +82,19 @@ function faChip(p) {
   }
   return '';
 }
-function meta(p) { return esc(p.team) + ' · ' + esc(p.pos.join('/') || '–') + depthLabel(p); }
+function meta(p) { return esc(p.team) + ' · ' + esc(p.pos.join('/') || '–') + depthLabel(p) + rankLabel(p); }
+// where he stands in the pool: points so far, and value from here (RANK_TAG_MAX and better)
+function rankLabel(p) {
+  const k = p.rank;
+  if (!k) return '';
+  const bits = [k.total && k.total <= RANK_TAG_MAX ? '#' + k.total + ' so far' : '', k.ros && k.ros <= RANK_TAG_MAX ? '#' + k.ros + ' ROS' : ''].filter(Boolean);
+  return bits.length ? ` · <span class="rk" title="${esc(rankTip(p))}">${bits.join(' · ')}</span>` : '';
+}
+function rankTip(p) {
+  const k = p.rank;
+  return `#${k.total || '–'} in total points so far, #${k.pg || '–'} per game so far${k.pg ? '' : ` (${k.gp} of ${k.team_gp || 0} games; needs 60% to rank)`}; `
+    + `#${k.ros_pg || '–'} in projected points a game and #${k.ros || '–'} in value for the rest of the season`;
+}
 // his place on ESPN's depth chart (p.depth), counting past teammates who are Out
 function depthLabel(p) {
   const dp = p.depth;
@@ -92,6 +104,7 @@ function depthLabel(p) {
   const why = dp.out.length ? ` (${dp.out.join(', ')} out)` : '';
   return ` · <span class="depth d${Math.min(dp.now, 4)}" title="ESPN depth chart: listed ${ord(dp.rank)} at ${esc(dp.pos)}">${esc(what + why)}</span>`;
 }
+const RANK_TAG_MAX = 150;
 function nextGame(p) {
   const g = (p.next || [])[0];
   if (!g) return 'no games this week';
@@ -1466,6 +1479,12 @@ function openPlayer(id) {
       <dt>Updated</dt><dd>${i.updated ? esc(whenLabel(Date.parse(i.updated) / 1000)) : '–'}</dd>` : ''}</dl>
       ${i && i.short ? `<p class="small">${esc(i.short)}</p>` : ''}${i && i.long && i.long !== i.short ? `<p class="small muted">${esc(i.long)}</p>` : ''}</div>` : ''}
     ${takesFor([p.id]).length ? `<div class="sec"><div class="h">Analyst take</div>${takesFor([p.id]).map(takeBlock).join('')}</div>` : ''}
+    ${p.rank ? `<div class="sec"><div class="h">League rank</div><div class="ranks">
+      <div><b>${p.rank.total ? '#' + p.rank.total : '–'}</b><span>total points so far</span></div>
+      <div><b>${p.rank.pg ? '#' + p.rank.pg : '–'}</b><span>${p.rank.pg ? 'per game so far' : `per game: ${p.rank.gp} of ${p.rank.team_gp || 0} games, needs 60%`}</span></div>
+      <div><b>${p.rank.ros_pg ? '#' + p.rank.ros_pg : '–'}</b><span>per game, rest of season</span></div>
+      <div><b>${p.rank.ros ? '#' + p.rank.ros : '–'}</b><span>value, rest of season</span></div></div>
+      <p class="small muted">Against every player the HQ tracks. Rest-of-season per game is the projection, which blends a short start with his preseason number, so it ranks everyone.</p></div>` : ''}
     <div class="sec"><div class="h">Rest of season</div><dl class="kv">
       <dt>Per game</dt><dd><b>${n1(r.fppg)}</b> · ${prior}</dd>
       <dt>Games</dt><dd>${n1(r.games)} expected of ${r.team_games} left${r.absent ? ` · ${n1(r.absent)} missed while Out` : ''} · ${n1(r.playoff_games)} in the playoff weeks</dd>
