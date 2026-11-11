@@ -1190,7 +1190,7 @@ function viewValues() {
     ${lineupTotals(entries)}
     <p class="small muted"><b>ROS</b>: projected points per game for the rest of the season. <b>wk starts</b>: expected starts in your lineup over
     the rest of this matchup week, out of his games left. <b>Starts</b>: expected starts from here to the end of the season if you hold this roster;
-    only starters score, so this is his games less the ones he would sit on your bench. Players in IR are left out.
+    only starters score, so this is his games less the ones he would sit on your bench. Players in IR count from their projected return.
     <b>Value</b>: points above a waiver pickup over the rest of the season, playoff weeks counting 1.5×.
     Lowest value first: ${drops}.</p>`;
 }
@@ -1406,7 +1406,7 @@ function weekTable() {
     return `<tr class="${Number(tid) === me() ? 'mine' : ''}"><td><b>${esc(t.abbrev)}</b> <span class="muted small">${esc(t.name)}</span></td>${cells}</tr>`;
   }).join('');
   return `<div class="panel"><h3>Week by week</h3><p class="cap">Each team's projected points and expected starts (games that fit its lineup) per matchup week,
-    rosters as they are today with no more moves and players in IR left out. This week adds the points scored so far and the starts already made.
+    rosters as they are today with no more moves; players in IR count from their projected return. This week adds the points scored so far and the starts already made.
     Outlined: the team you play that week. Hover a cell for games and points a start.</p>
     <div class="scroll-x"><table class="tbl wk-tbl"><thead><tr><th>Team</th>${heads}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
@@ -1426,7 +1426,7 @@ function viewLeague() {
     return `<tr class="${t.team === me() ? 'mine' : ''}"><td class="muted">${esc(whenLabel(t.at))}</td><td><b>${esc(abbr(t.team))}</b> ${what.join('; ')}</td></tr>`;
   }).join('');
   const strength = standingsRows();
-  return `${weekTable()}${strength.length ? `<div class="panel"><h3>Roster strength from here</h3><p class="cap">How many points a week each team should score from here if nobody makes another move (its best lineup every day, injuries counted): the Proj/wk column. Hover a bar for its record and points scored so far.</p>
+  return `${weekTable()}${strength.length ? `<div class="panel"><h3>Roster strength from here</h3><p class="cap">How many points a week each team should score from here if nobody makes another move (its best lineup every day, injuries counted, players in IR from their projected return): the Proj/wk column. Hover a bar for its record and points scored so far.</p>
     ${Charts.hbars(strength, { labelWidth: 130 })}</div>` : ''}
     <h2>Standings</h2><div class="card scroll-x"><table class="tbl"><thead><tr><th>#</th><th>Team</th><th class="r">W-L</th><th class="r" title="Points for: fantasy points this team has scored this season">Scored</th><th class="r" title="Points against: fantasy points scored against this team">Allowed</th><th class="r" title="Points a week from each roster's best daily lineups over the rest of the season, as it stands">Proj/wk</th><th class="r">Waiver</th></tr></thead><tbody>${standings}</tbody></table></div>
     <p class="small muted"><b>Proj/wk</b>: points a week each roster's starters should score over the rest of the season if it is held as is (players in IR left out).</p>

@@ -641,13 +641,17 @@ def test_week_outlook():
     players = {1: player(1, team="BOS", fppg=20.0), 2: player(2, team="LAL", fppg=40.0), 3: player(3, team="LAL", fppg=50.0)}
     for p in players.values():
         p["odds"] = {str(g["date"]): 1.0 for g in cal.by_team[p["team"]]}
+    players[3]["odds"] = {}                     # in IR, not back this week
     lg = league_with([(1, "UT"), (2, "UT"), (3, "IR")])
     lg["starting"] = ["UT", "UT"]
     lg["matchups"] = [{"period": 1, "home": 3, "away": 5, "home_pts": 100.0, "away_pts": 90.0}]
     t = advice.week_outlook(lg, players, cal, {3: [{"played": 2}, {"played": 1}]})
     w = t["teams"]["3"][0]
-    assert w["opp"] == 5 and w["points"] == 100.0 + 4 * 20.0 + 2 * 40.0, "score so far plus the days left; IR left out: %s" % w
+    assert w["opp"] == 5 and w["points"] == 100.0 + 4 * 20.0 + 2 * 40.0, "score so far plus the days left; IR still out: %s" % w
     assert w["starts"] == 6 + 3 and w["games"] == 6 + 3, "starts already made count as starts and games: %s" % w
+    players[3]["odds"] = {str(cal.by_team["LAL"][-1]["date"]): 1.0}   # back for LAL's last game
+    w = advice.week_outlook(lg, players, cal)["teams"]["3"][0]
+    assert w["points"] == 100.0 + 4 * 20.0 + 2 * 40.0 - 20.0 + 50.0, "an IR player counts from his return (starts over the 20): %s" % w
     assert len(t["weeks"]) == 1, "no weeks past the season"
 
 

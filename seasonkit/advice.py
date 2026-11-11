@@ -954,7 +954,7 @@ WEEK_TABLE_WEEKS = 4     # the League tab's week table: this week and the next t
 
 def week_outlook(league, players, calendar, past=None, weeks=WEEK_TABLE_WEEKS):
     """Every team's points and expected starts for this week and the next few, from its roster as it is
-    (no moves; IR left out), each week's best daily lineups as in `matchup`. This week adds the score so
+    (no moves; players in IR count from their projected return), each week's best daily lineups as in `matchup`. This week adds the score so
     far (ESPN's live total), anyone still in today's games, and the starters who played on its finished
     days (past: build.past_days). -> {"weeks": [{period, dates}], "teams": {team id: [{period, opp,
     score, points, starts, games}]}}; games = expected games played by the roster, starts = those that
@@ -967,7 +967,7 @@ def week_outlook(league, players, calendar, past=None, weeks=WEEK_TABLE_WEEKS):
            "teams": {}}
     for tid in league["teams"]:
         tid = int(tid)
-        ids = [e["id"] for e in roster(league, tid, include_ir=False)]
+        ids = [e["id"] for e in roster(league, tid, include_ir=True)]
         rows = []
         for w in span:
             lo, hi = calendar.weeks[w]
