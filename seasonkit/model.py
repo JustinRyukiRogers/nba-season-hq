@@ -280,9 +280,12 @@ def game_odds(player, games, injury, note, today, season_end, base_share, back_s
     dtd = not out and player.get("status") == "DAY_TO_DAY" and tags.get(first) != "Available"
     rate = (note.get("games_rate") or 1.0)
     odds = []
+    play = note.get("play") or {}   # a season note's own odds for a game (the user's call) beat everything
     for i, g in enumerate(games):
         tag = TAG_PLAY.get(tags.get(str(g["date"])))
-        if tag is not None and not over:
+        if str(g["date"]) in play:
+            odds.append((g, float(play[str(g["date"])]), False, 1.0))
+        elif tag is not None and not over:
             odds.append((g, tag * rate, out and g["date"] < back and not tag, 1.0))
         elif out and (over or g["date"] < back):
             odds.append((g, 0.0, True, 1.0))

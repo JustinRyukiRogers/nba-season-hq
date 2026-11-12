@@ -5,6 +5,7 @@
     "games_rate: multiplier on his share of games played (0.9 = misses an extra 10%).",
     "fppg_delta: points per game to add to (or take off) his rest-of-season projection.",
     "note: text shown on his card.",
+    "play: {\"YYYY-MM-DD\": 0-1} sets his chance of playing that game, over ESPN's day-to-day and the injury report tag.",
     "skip: true to stop suggesting him to you (adds, stashes, streams); he still counts as a free agent others can take.",
     "This file is public in the GitHub repo. Commit and push to apply it; the next refresh picks it up."
   ],
@@ -12,6 +13,10 @@
     "Brandon Ingram": {
       "out_until": "2026-11-17",
       "note": "Set 2026-11-12: the user moved his return back to Tue Nov 17. Was Fri Nov 13 (set Nov 8, when news said he could debut Tue Nov 10 at PHO); Dec 1 before that (set Oct 19, no timetable then)."
+    },
+    "Luka Doncic": {
+      "play": {"2026-11-15": 1.0},
+      "note": "Set 2026-11-12: the user expects him to play Sun Nov 15 at PHX despite the right ankle he hurt late on Nov 11 (ESPN day-to-day, which the HQ puts at 60%)."
     },
     "Jimmy Butler III": {
       "skip": true,

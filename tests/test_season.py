@@ -93,6 +93,9 @@ def test_game_odds():
     odds = model.game_odds({"status": "OUT", "tags": {"2026-11-02": "Questionable"}}, games, {"return": "2026-11-05"}, {},
                            today, date(2027, 3, 28), 0.8, 0.85, 0.9)
     assert odds[0][1] == 0.5 and not odds[0][2] and odds[1][2], "questionable to return: half a game, not an absence"
+    odds = model.game_odds({"status": "DAY_TO_DAY"}, games, None, {"play": {"2026-11-02": 1.0}}, today,
+                           date(2027, 3, 28), 0.8, 0.8, 1.0)
+    assert odds[0][1] == 1.0 and odds[1][1] == model.NEAR_TERM_PLAY, "a note's play odds beat day-to-day"
 
 
 def test_parse_report():
