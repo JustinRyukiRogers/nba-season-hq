@@ -141,6 +141,45 @@ def activated(league, players, team_id, ids):
     return ids, acts, room
 
 
+def held(league, players, team_id):
+    """A team's roster if it is held with no moves but the forced ones: each player in IR is activated
+    on his projected return (the first day his odds are above 0), into an open roster spot or in place of
+    the lowest-valued player outside IR. -> (ids outside IR, [(day, pid in, pid out or None)])."""
+    ids = [e["id"] for e in roster(league, team_id, include_ir=False) if e["id"] in players]
+    back = sorted((min(d for d, x in players[e["id"]]["odds"].items() if x > 0), e["id"]) for e in roster(league, team_id)
+                  if e["slot"] == "IR" and e["id"] in players and any(x > 0 for x in players[e["id"]]["odds"].values()))
+    now, room, swaps = list(ids), open_room(league, ids), []
+    for day, pid in back:
+        drop = None if room > 0 else weakest(players, [{"id": x} for x in now], exclude=[s[1] for s in swaps])
+        room -= drop is None
+        now = [x for x in now if x != drop] + [pid]
+        swaps.append((parse_day(day), pid, drop))
+    return ids, swaps
+
+
+def project_held(ids, swaps, days, players, starting, calendar, **kw):
+    """project_days for a roster that changes on the swap days (from `held`): the days split where a
+    swap lands, each stretch projected with the roster of its first day."""
+    total, per_day, by = 0.0, [], defaultdict(lambda: [0.0, 0.0])
+    cur, i, days = list(ids), 0, list(days)
+    while i < len(days):
+        for d, pid, drop in swaps:
+            if d <= days[i] and pid not in cur:
+                cur = [x for x in cur if x != drop] + [pid]
+        nxt = next((d for d, pid, _ in swaps if d > days[i] and pid not in cur), None)
+        j = i
+        while j < len(days) and (nxt is None or days[j] < nxt):
+            j += 1
+        pts, pd, bp = project_days(cur, days[i:j], players, starting, calendar, **kw)
+        total += pts
+        per_day += pd
+        for pid, (st, p) in bp.items():
+            by[pid][0] += st
+            by[pid][1] += p
+        i = j
+    return total, per_day, dict(by)
+
+
 def ir_actions(league, players, me):
     """ESPN only lets a player tagged Out into an IR slot, and a player in IR who is no longer Out
     blocks every add and claim until he is activated."""
@@ -637,16 +676,15 @@ def day_lineup(ids, day, players, starting, calendar, slots_now):
             "starts": round(sum(starts.values()) + sum(st for _, st in left.values()), 1)}
 
 
-def lineup_outlook(ids, players, starting, calendar):
+def lineup_outlook(ids, players, starting, calendar, swaps=()):
     """Expected starts, not games, for the players you hold: this week and the rest of the season
-    if you keep this roster. -> {pid: {...}}, season points, season points with playoff weeks
-    weighted."""
+    if you keep this roster (swaps: IR activations from `held`). -> {pid: {...}}, season points."""
     week = week_days(calendar)
-    _, _, wk = project_days(ids, week, players, starting, calendar)
+    _, _, wk = project_held(ids, swaps, week, players, starting, calendar)
     rest = calendar.days_left()
-    pts, _, ros = project_days(ids, rest, players, starting, calendar)
+    pts, _, ros = project_held(ids, swaps, rest, players, starting, calendar)
     out = {}
-    for pid in ids:
+    for pid in list(ids) + [s[1] for s in swaps]:
         p = players[pid]
         out[pid] = {"week_games": sum(1 for d in week if str(d) in p["odds"]),
                     "week_starts": round(wk.get(pid, [0, 0])[0], 1), "week_points": round(wk.get(pid, [0, 0])[1], 1),
@@ -954,7 +992,8 @@ WEEK_TABLE_WEEKS = 4     # the League tab's week table: this week and the next t
 
 def week_outlook(league, players, calendar, past=None, weeks=WEEK_TABLE_WEEKS):
     """Every team's points and expected starts for this week and the next few, from its roster as it is
-    (no moves; players in IR count from their projected return), each week's best daily lineups as in `matchup`. This week adds the score so
+    (no moves but activating players in IR on their projected return, in place of the lowest-valued
+    player when the roster is full: `held`), each week's best daily lineups as in `matchup`. This week adds the score so
     far (ESPN's live total), anyone still in today's games, and the starters who played on its finished
     days (past: build.past_days). -> {"weeks": [{period, dates}], "teams": {team id: [{period, opp,
     score, points, starts, games}]}}; games = expected games played by the roster, starts = those that
@@ -967,15 +1006,17 @@ def week_outlook(league, players, calendar, past=None, weeks=WEEK_TABLE_WEEKS):
            "teams": {}}
     for tid in league["teams"]:
         tid = int(tid)
-        ids = [e["id"] for e in roster(league, tid, include_ir=True)]
+        ids, swaps = held(league, players, tid)
         rows = []
         for w in span:
             lo, hi = calendar.weeks[w]
             days = calendar.days_left_in_week(w) if w == week else [lo + timedelta(days=i) for i in range((hi - lo).days + 1)]
-            pts, per_day, _ = project_days(ids, days, players, league["starting"], calendar)
+            pts, per_day, _ = project_held(ids, swaps, days, players, league["starting"], calendar)
             starts = sum(n for _, _, n in per_day)
-            games = sum(players[pid]["odds"].get(str(d), 0.0) for pid in ids if pid in players for d in days
-                        if (g := calendar.game_on(players[pid]["team"], d)) and g["tip"] > calendar.now)
+            on = lambda pid, d: (pid in ids and not any(o == pid and sd <= d for sd, _, o in swaps)) or \
+                any(i == pid and sd <= d for sd, i, _ in swaps)
+            games = sum(players[pid]["odds"].get(str(d), 0.0) for pid in list(ids) + [s[1] for s in swaps] for d in days
+                        if on(pid, d) and (g := calendar.game_on(players[pid]["team"], d)) and g["tip"] > calendar.now)
             m = next((m for m in league["matchups"] if m["period"] == w + 1 and tid in (m["home"], m["away"])), None)
             opp = (m["away"] if m["home"] == tid else m["home"]) if m else None
             score = 0.0

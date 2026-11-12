@@ -479,10 +479,10 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
             players[x]["name"] for x in league_moves["unmatched"]))
 
     # starts, not games: what each roster's best daily lineups get out of it, if it is held. Players in
-    # IR count from their projected return (their odds are 0 until then), as they will once activated.
+    # IR are activated on their projected return, in place of the lowest-valued player (advice.held).
     for tid, t in league["teams"].items():
-        ids = [e["id"] for e in t["roster"] if e["id"] in players]
-        outlook, pts = advice.lineup_outlook(ids, players, league["starting"], calendar)
+        ids, swaps = advice.held(league, players, int(tid))
+        outlook, pts = advice.lineup_outlook(ids, players, league["starting"], calendar, swaps)
         weeks = len(calendar.weeks) - (calendar.current_week() or 0)
         t["outlook"] = {"points": round(pts), "per_week": round(pts / weeks) if weeks else 0}
         if int(tid) == me:

@@ -650,8 +650,15 @@ def test_week_outlook():
     assert w["opp"] == 5 and w["points"] == 100.0 + 4 * 20.0 + 2 * 40.0, "score so far plus the days left; IR still out: %s" % w
     assert w["starts"] == 6 + 3 and w["games"] == 6 + 3, "starts already made count as starts and games: %s" % w
     players[3]["odds"] = {str(cal.by_team["LAL"][-1]["date"]): 1.0}   # back for LAL's last game
+    players[1]["ros"]["value"] = 10.0                                  # the one to drop for him
     w = advice.week_outlook(lg, players, cal)["teams"]["3"][0]
     assert w["points"] == 100.0 + 4 * 20.0 + 2 * 40.0 - 20.0 + 50.0, "an IR player counts from his return (starts over the 20): %s" % w
+    assert w["games"] == 3 + 2 + 1, "activated in place of the lowest-valued player, not as an extra one: %s" % w
+    assert advice.held(lg, players, 3)[1] == [(cal.by_team["LAL"][-1]["date"], 3, 1)]
+    players[3]["odds"][str(cal.by_team["LAL"][0]["date"])] = 0.0        # a game he is listed out for
+    assert advice.held(lg, players, 3)[1][0][0] == cal.by_team["LAL"][-1]["date"], "back on the first day his odds are above 0"
+    lg["slots"] = {"BE": 1}
+    assert advice.held(lg, players, 3)[1][0][2] is None, "an open roster spot: nobody dropped"
     assert len(t["weeks"]) == 1, "no weeks past the season"
 
 
