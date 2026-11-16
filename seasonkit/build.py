@@ -189,18 +189,18 @@ def attach_live(league, players, calendar, problems):
         p["live"] = {"pts": round(pts, 1), "min": mins, "state": s["state"], "left": round(left, 3), "detail": s["detail"]}
 
 
-def past_days(cookies, league, players, calendar, problems):
-    """This week's finished days for every team: the lineup each started (ESPN's box score for the day)
+def past_days(cookies, league, players, calendar, problems, week=None):
+    """This week's (or an earlier week's: week index) finished days for every team: the lineup each started (ESPN's box score for the day)
     and what it scored, against what those starters were expected to score (chance he plays x points
     a game, on today's numbers, so a day's own games are already in them a little). ->
     {team id: [{date, actual, expected, starts (expected), played (starters who scored), rows: [[slot,
     pid, expected, actual, had a game]]}]}"""
-    week = calendar.current_week()
+    week = calendar.current_week() if week is None else week
     if week is None:
         return {}
     days = []
     d = max(calendar.weeks[week][0], calendar.start)
-    while d < calendar.today:
+    while d < calendar.today and d <= calendar.weeks[week][1]:
         days.append(d)
         d += timedelta(days=1)
     if not days:
@@ -242,6 +242,28 @@ def past_days(cookies, league, players, calendar, problems):
     for v in out.values():
         v.sort(key=lambda x: x["date"])
     return out
+
+
+LAST_WEEK_DAYS = 1   # the week just ended stays on the HQ through this many days of the new week (to EOD Monday)
+
+
+def last_matchup(cookies, league, players, me, calendar, problems):
+    """The matchup week that just ended, kept for the first LAST_WEEK_DAYS days of the new one: the final
+    score and each finished day as in past_days. -> None once that window has passed."""
+    week = calendar.current_week()
+    if not week or calendar.today < calendar.start or (calendar.today - calendar.weeks[week][0]).days >= LAST_WEEK_DAYS:
+        return None
+    prev, period = week - 1, week
+    m = next((m for m in league["matchups"] if m["period"] == period and me in (m["home"], m["away"])), None)
+    if not m:
+        return None
+    opp = m["away"] if m["home"] == me else m["home"]
+    past = past_days(cookies, league, players, calendar, problems, week=prev)
+    mine, theirs = (m["home_pts"], m["away_pts"]) if m["home"] == me else (m["away_pts"], m["home_pts"])
+    return {"period": period, "opp": opp, "final": True, "playoffs": prev >= calendar.regular,
+            "dates": [str(calendar.weeks[prev][0]), str(calendar.weeks[prev][1])],
+            "me": {"team": me, "score": round(mine or 0.0, 1)}, "them": {"team": opp, "score": round(theirs or 0.0, 1)},
+            "past": {"me": past.get(me, []), "them": past.get(opp, [])}}
 
 
 def _split(stats, key_id):
@@ -496,6 +518,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     past = past_days(cookies, league, players, calendar, problems)
     if match and match.get("them"):    # this week's finished days: what each side's starters scored and were expected to
         match["past"] = {"me": past.get(me, []), "them": past.get(opp, [])}
+    last = last_matchup(cookies, league, players, me, calendar, problems)
     week_table = advice.week_outlook(league, players, calendar, past)
     acts = advice.actions(league, players, me, calendar, ir, lineup, ups, stash_list, stream_list, waivers, plan, trades)
     report = advice.team_report(league, players, me, priors, calendar)
@@ -534,7 +557,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         "actions": acts, "lineup": lineup, "upgrades": ups, "stash": stash_list, "streams": stream_list,
         "hunches": hunch_list, "takes": load_takes(players, calendar.today, problems),
         "plan": plan, "trades": trades, "league_moves": league_moves,
-        "matchup": match, "next_matchup": match_next, "week_table": week_table, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
+        "matchup": match, "next_matchup": match_next, "last_matchup": last, "week_table": week_table, "waivers": waivers, "drop_order": advice.drop_order(league, players, me), "team_report": report,
         "injuries": advice.injury_board(league, players, me, opp, calendar), "transactions": txs,
         "news_fetched": fetched,
         "gamelog": page_gamelog(log, players, games, calendar, own, boxes, flows),

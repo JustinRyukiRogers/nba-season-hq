@@ -257,6 +257,7 @@ function viewDashboard() {
 function h2hWhich() {
   const d = S.data, cur = d.matchup, nxt = d.next_matchup;
   const ok = m => m && m.me && m.them && m.h2h;
+  if (S.hw === 'last' && d.last_matchup) return d.last_matchup;
   if (S.hw === 'next' && ok(nxt)) return nxt;
   if (S.hw === 'this' && ok(cur)) return cur;
   if (ok(cur) && (cur.me.by_day.length > 2 || !ok(nxt))) return cur;
@@ -270,18 +271,62 @@ function h2hViews(H) {
   const pick = side => H.views[side][want[side]] ? want[side] : 'as_is';
   return { me: pick('me'), them: pick('them') };
 }
+// Last week (kept to the end of the new week's first day), this week, next week.
+function h2hToggle(m) {
+  const d = S.data, ok = x => x && x.h2h;
+  const b = [];
+  if (d.last_matchup) b.push(`<button data-hw="last" class="${m.final ? 'on' : ''}">Last week · ${esc(abbr(d.last_matchup.opp))}</button>`);
+  if (ok(d.matchup)) b.push(`<button data-hw="this" class="${!m.final && !m.ahead ? 'on' : ''}">This week · ${esc(abbr(d.matchup.opp))}</button>`);
+  if (ok(d.next_matchup)) b.push(`<button data-hw="next" class="${m.ahead ? 'on' : ''}">Next week · ${esc(abbr(d.next_matchup.opp))}</button>`);
+  return b.length > 1 ? `<div class="seg h2h-seg">${b.join('')}</div>` : '';
+}
+// The week just ended: the final score and each finished day, lineups as started.
+function h2hLastHero(m) {
+  const opp = team(m.opp), mine = team(me());
+  const margin = m.me.score - m.them.score;
+  const past = m.past.me.map((a, i) => [a, m.past.them[i]]).filter(([a, b]) => b && a.date === b.date);
+  if (!S.hd || !past.some(([a]) => a.date === S.hd)) S.hd = past.length ? past[past.length - 1][0].date : null;
+  const sum = (side, k) => past.reduce((t, x) => t + x[side === 'me' ? 0 : 1][k], 0);
+  const side = (cls, t, score) => `<div class="h2h-side ${cls}">
+      <div class="h2h-abbr">${esc(t.abbrev)}${cls === 'me' ? ' <span>you</span>' : ''}</div>
+      <div class="h2h-name">${esc(t.name)}</div>
+      <div class="h2h-big">${n0(score)}</div>
+      <div class="h2h-sub">final · starters expected ${n0(sum(cls, 'expected'))}</div></div>`;
+  const total = Math.max(1, m.me.score + m.them.score), share = 100 * m.me.score / total;
+  const top = Math.max(1, ...past.flatMap(([a, b]) => [a.actual, a.expected, b.actual, b.expected]));
+  const h = x => (42 * x / top).toFixed(0);
+  const vsExp = x => `<b class="${x.actual - x.expected >= 0.5 ? 'pos' : x.actual - x.expected <= -0.5 ? 'neg' : ''}">${signed(x.actual - x.expected)}</b>`;
+  const strip = past.map(([a, b]) => {
+    const diff = a.actual - b.actual, none = !a.starts && !b.starts;
+    return `<button class="h2h-day past${a.date === S.hd ? ' on' : ''}" data-hd="${a.date}"
+        data-tip="${esc(dayLabel(a.date))}, final: you ${n0(a.actual)} (expected ${n0(a.expected)}), ${esc(opp.abbrev)} ${n0(b.actual)} (expected ${n0(b.expected)})">
+      <span class="dn">${wkday(a.date)} <em>final</em></span>
+      <span class="db"><i class="me" style="height:${h(a.actual)}px"></i>${a.expected ? `<b class="exp" style="bottom:${h(a.expected)}px"></b>` : ''}</span>
+      <span class="db down"><i class="them" style="height:${h(b.actual)}px"></i>${b.expected ? `<b class="exp" style="top:${h(b.expected)}px"></b>` : ''}</span>
+      <span class="dd ${diff >= 0.5 ? 'up' : diff <= -0.5 ? 'down' : ''}">${none ? '–' : signed(diff)}</span>
+      <span class="ds">${none ? 'no games' : `${vsExp(a)} v ${vsExp(b)}`}</span></button>`;
+  }).join('');
+  return `<section class="h2h"><div class="h2h-top"><div class="h2h-kicker">Week ${m.period} · final · ${esc(dayLabel(m.dates[0]))} – ${esc(dayLabel(m.dates[1]))}</div>${h2hToggle(m)}</div>
+    <div class="h2h-board">${side('me', mine, m.me.score)}
+      <div class="h2h-mid"><div class="h2h-margin ${margin >= 0 ? 'up' : 'down'}">${margin > 0 ? 'Won by' : margin < 0 ? 'Lost by' : 'Tied'} ${margin ? n0(Math.abs(margin)) : ''}</div>
+        <div class="h2h-mcap">starters vs expected: you ${signed(sum('me', 'actual') - sum('me', 'expected'))}, ${esc(opp.abbrev)} ${signed(sum('them', 'actual') - sum('them', 'expected'))}</div></div>
+      ${side('them', opp, m.them.score)}</div>
+    <div class="h2h-tug"><i class="me" style="width:${share.toFixed(1)}%"></i><i class="them"></i><b style="left:50%"></b></div>
+    <div class="h2h-days" role="tablist" aria-label="Days">${strip}</div>
+    <p class="cap h2h-days-cap">Last week stays here until the end of the new week's first day. The line marks what each side's starters were expected to score.</p>
+    <div class="h2h-body"><div>${h2hPastDay(m, past.find(([a]) => a.date === S.hd))}</div><div></div></div></section>`;
+}
 function h2hHero() {
   const m = h2hWhich();
   if (!m) return '';
+  if (m.final) return h2hLastHero(m);
   const d = S.data, H = m.h2h, opp = team(m.opp), mine = team(me());
   const which = h2hViews(H), A = H.views.me[which.me], B = H.views.them[which.them];
   const rec = t => t.record ? `${t.record.w}–${t.record.l}${t.record.t ? '–' + t.record.t : ''}` : '';
   const margin = A.total - B.total, total = Math.max(1, A.total + B.total);
   const share = 100 * A.total / total;
   const live = !m.ahead && (m.me.score || m.them.score);
-  const toggle = d.next_matchup && d.next_matchup.h2h && d.matchup && d.matchup.h2h
-    ? `<div class="seg h2h-seg"><button data-hw="this" class="${m.ahead ? '' : 'on'}">This week · ${esc(abbr(d.matchup.opp))}</button>`
-      + `<button data-hw="next" class="${m.ahead ? 'on' : ''}">Next week · ${esc(abbr(d.next_matchup.opp))}</button></div>` : '';
+  const toggle = h2hToggle(m);
   const LABEL = { me: ['My lineup', 'Suggested moves'], them: ['Their lineup', 'If they stream'] };
   const vseg = side => H.views[side].moves
     ? `<div class="seg vseg ${side}">${['as_is', 'moves'].map((k, i) => `<button data-hv="${side}:${k}" class="${which[side] === k ? 'on' : ''}">${LABEL[side][i]}</button>`).join('')}</div>`
