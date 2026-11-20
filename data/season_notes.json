@@ -11,11 +11,16 @@
   ],
   "players": {
     "Brandon Ingram": {
-      "out_until": "2026-11-17",
-      "note": "Set 2026-11-12: the user moved his return back to Tue Nov 17. Was Fri Nov 13 (set Nov 8, when news said he could debut Tue Nov 10 at PHO); Dec 1 before that (set Oct 19, no timetable then)."
+      "out_until": "2026-11-23",
+      "play": {
+        "2026-11-23": 0.9
+      },
+      "note": "Set 2026-11-20: Shams reports he makes his season debut Mon Nov 23 vs HOU, so he misses Sat at DAL. Was Tue Nov 17 (set Nov 12), Fri Nov 13 (set Nov 8), Dec 1 (set Oct 19)."
     },
     "Luka Doncic": {
-      "play": {"2026-11-15": 1.0},
+      "play": {
+        "2026-11-15": 1.0
+      },
       "note": "Set 2026-11-12: the user expects him to play Sun Nov 15 at PHX despite the right ankle he hurt late on Nov 11 (ESPN day-to-day, which the HQ puts at 60%)."
     },
     "Jimmy Butler III": {
