@@ -63,6 +63,22 @@ def test_minutes_rate():
     assert mins_new > mins_old, "recent games count more"
 
 
+
+def test_minutes_limit():
+    games = [(20.0, 24.0)] * 3
+    mins, rate, w = model.minutes_rate(35.0, 1.0, games, [3, 24.0, 20.0], capped=[True] * 3)
+    assert mins == 35.0 and w == 0.0, "games under a minutes cap don't move his minutes"
+    assert abs(rate - (400 + 60) / (400 + 72)) < 1e-9, "but they count for points a minute"
+    capped_mix = model.minutes_rate(35.0, 1.0, [(30.0, 34.0)] + games, [4, 26.5, 22.5], capped=[False] + [True] * 3)[0]
+    assert abs(capped_mix - (35.0 + (34.0 - 35.0) / 5)) < 1e-9, "only his uncapped game counts: %s" % capped_mix
+    note = {"minutes_limit": {"mpg": 24, "until": "2026-11-29"}}
+    assert abs(model.limit_factor(note, 32.0, date(2026, 11, 29)) - 0.75) < 1e-9
+    assert model.limit_factor(note, 32.0, date(2026, 11, 30)) == 1.0, "the cap ends after its date"
+    assert model.limit_factor(note, 20.0, date(2026, 11, 25)) == 1.0, "a cap above his minutes changes nothing"
+    p = player(1, fppg=40.0)
+    p["ros"]["limit"] = {"2026-11-25": 0.6}
+    assert abs(model.game_pts(p, date(2026, 11, 25)) - 24.0) < 1e-9 and model.game_pts(p, "2026-11-27") == 40.0
+
 def test_absence():
     today, end = date(2026, 11, 1), date(2027, 3, 28)
     out, back, over = model.absence({"status": "OUT"}, None, {}, today, end)

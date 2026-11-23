@@ -230,29 +230,56 @@ def upside(r):
     return r["fppg"] + UPSIDE_RISK * (up - r["fppg"])
 
 
-def minutes_rate(prior_mpg, prior_rate, games, season, k=None):
+def minutes_rate(prior_mpg, prior_rate, games, season, k=None, capped=None):
     """Expected minutes and points a minute. games: [(fantasy points, minutes)] of his games this
     season, oldest first (may miss early ones); season: [games, minutes, points per game] totals.
     k: games of his own play that count as much as the preseason minutes (default: the shipped
-    weights). -> (minutes, rate, minutes weight of his own play)."""
+    weights). capped: one flag per game in `games`, True for games played under a minutes limit (a
+    season note's minutes_limit): they count for points a minute but not for minutes.
+    -> (minutes, rate, minutes weight of his own play)."""
     gp = season[0] if season and season[0] else 0
-    recent = games[-MINUTES_RECENT:]
-    if recent:
+    if capped and any(capped):
+        free = [g for g, c in zip(games, capped) if not c]
+        gp = len(free) + max(0, gp - len(games))   # games before the log began count as uncapped
+        recent = free[-MINUTES_RECENT:]
+        prior_only = not recent
+    else:
+        recent, prior_only = games[-MINUTES_RECENT:], False
+    if prior_only:
+        played = None
+    elif recent:
         ws = [0.5 ** ((len(recent) - 1 - i) / MINUTES_HALF_LIFE) for i in range(len(recent))]
         played = sum(w * m for w, (_, m) in zip(ws, recent)) / sum(ws)
     elif gp:
         played = season[1]
     else:
-        return prior_mpg, prior_rate, 0.0
+        played = None
+    tot_min = season[0] * season[1] if season and season[0] else sum(m for _, m in games)
+    tot_pts = season[0] * season[2] if season and season[0] else sum(f for f, _ in games)
+    rate = (prior_rate * RATE_PRIOR_MINUTES + tot_pts) / (RATE_PRIOR_MINUTES + tot_min)
+    if played is None:
+        return prior_mpg, (rate if tot_min else prior_rate), 0.0
     n = min(MINUTES_RECENT, max(gp, len(recent)))
     if k is None:
         k = MINUTES_BUMP_PRIOR_GAMES if played - prior_mpg >= MINUTES_BUMP else MINUTES_PRIOR_GAMES
     w = n / (n + k)
     mins = prior_mpg + w * (played - prior_mpg)
-    tot_min = gp * season[1] if gp else sum(m for _, m in games)
-    tot_pts = gp * season[2] if gp else sum(f for f, _ in games)
-    rate = (prior_rate * RATE_PRIOR_MINUTES + tot_pts) / (RATE_PRIOR_MINUTES + tot_min)
     return mins, rate, w
+
+
+def limit_factor(note, mins, day):
+    """Share of his usual points in a game on `day` (a date) under a season note's minutes_limit
+    ({"mpg": cap, "until": "YYYY-MM-DD"}): cap / his expected minutes, at most 1; 1 after `until`."""
+    lim = note.get("minutes_limit")
+    if not lim or not mins or day > parse_day(lim["until"]):
+        return 1.0
+    return min(1.0, float(lim["mpg"]) / mins)
+
+
+def game_pts(p, day):
+    """Expected points if he plays on `day` (a date or YYYY-MM-DD): his points a game, cut on days
+    under a minutes limit."""
+    return p["ros"]["fppg"] * (p["ros"].get("limit") or {}).get(str(day), 1.0)
 
 
 def absence(player, injury, note, today, season_end):
@@ -323,11 +350,15 @@ def best_lineup(cands, slots):
     return owner, total
 
 
-def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=None):
+def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=None, game_days=None):
     """Fill p["ros"] (and p["odds"], used for lineups) for one normalized player. games_played:
-    [(fantasy points, minutes)] of his games this season, oldest first (the game log)."""
+    [(fantasy points, minutes)] of his games this season, oldest first (the game log); game_days: the
+    date of each (needed only for a season note's minutes_limit)."""
     prior = priors["players"].get(str(p["id"]))
     note = notes.get(p["id"]) or {}
+    lim = note.get("minutes_limit")
+    capped = ([d <= parse_day(lim["until"]) for d in game_days]
+              if lim and game_days and len(game_days) == len(games_played or []) else None)
     proj, season, last = p["stats"].get("proj"), p["stats"].get("season"), p["stats"].get("last")
     pmpg = None
     if prior:
@@ -352,15 +383,16 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
     mins, rate, own_weight = None, None, (gp / (gp + k) if gp else 0.0)
     near = fppg
     if pmpg and pmpg > 0:
-        mins, rate, own_weight = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season)
+        mins, rate, own_weight = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season, capped=capped)
         fppg = mins * rate
-        near_mins = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season, k=NEAR_PRIOR_GAMES)[0]
+        near_mins = minutes_rate(pmpg, pfppg / pmpg, games_played or [], season, k=NEAR_PRIOR_GAMES, capped=capped)[0]
         near = near_mins * rate
     else:
         near_mins = mins
     fppg += note.get("fppg_delta") or 0.0
     near += note.get("fppg_delta") or 0.0
-    recent = [m for _, m in (games_played or []) if m > 0][-ROLE_GAMES:]
+    free = [g for g, c in zip(games_played or [], capped or [False] * len(games_played or [])) if not c]
+    recent = [m for _, m in free if m > 0][-ROLE_GAMES:]
 
     def role_at(pts, m):
         """Points a game at his last few games' minutes, when he has been playing more than m."""
@@ -383,7 +415,9 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
     odds = game_odds(p, games, injuries.get(p["id"]), note, calendar.today, calendar.end, base_share, back_share, factor,
                      first_day=calendar.start)
 
-    weighted = played = playoff = absent = team_w = 0.0
+    limit = {str(g["date"]): limit_factor(note, mins, g["date"]) for g, _, missed, _ in odds if not missed}
+    limit = {d: round(x, 3) for d, x in limit.items() if x < 1.0}
+    weighted = played = playoff = absent = team_w = cut = 0.0
     for g, prob, missed, gf in odds:
         week = calendar.week_of(g["date"])
         w = calendar.weight(week)
@@ -391,8 +425,10 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
             absent += w
             continue
         team_w += w * gf
-        weighted += prob * w
+        lf = limit.get(str(g["date"]), 1.0)
+        weighted += prob * w * lf       # a capped game counts as part of one in the season value
         played += prob
+        cut += prob * (1 - lf)
         if week >= calendar.regular:
             playoff += prob
     extra = calendar.unscheduled(p["team"]) if not over else 0
@@ -416,8 +452,10 @@ def value_player(p, priors, injuries, notes, calendar, cal_fit, games_played=Non
                 "games": round(played, 1), "playoff_games": round(playoff, 1), "team_games": len(games) + extra,
                 "absent": round(absent, 1), "share": round(weighted / team_w, 3) if team_w else 0.0,
                 "_team_w": team_w, "out": out, "back": str(back) if out and back else None, "season_over": over,
-                "points": round(played * fppg),
-                "ceiling": round(ceiling(fppg, [f for f, m in (games_played or []) if m > 0]), 1), "role": round(role, 2)}
+                "points": round((played - cut) * fppg),
+                "ceiling": round(ceiling(fppg, [f for f, m in free if m > 0]), 1), "role": round(role, 2)}
+    if limit:
+        p["ros"]["limit"] = limit        # {day: share of his points a game}, see game_pts
     p["ros"]["upside"] = round(upside(p["ros"]), 2)
     p["ros"]["near"] = round(near, 2)          # streams: see NEAR_PRIOR_GAMES
     p["ros"]["near_up"] = round(upside(dict(p["ros"], fppg=near, role=role_at(near, near_mins))), 2)
@@ -503,7 +541,7 @@ def project_days(pids, days, players, slots, calendar, now=None, samples=LINEUP_
                 continue
             prob = p["odds"].get(str(day), 0.0)
             if prob > 0:
-                cands.append((pid, prob, p["ros"]["fppg"], p["slots"]))
+                cands.append((pid, prob, game_pts(p, day), p["slots"]))
         pts, starts = lineup_day(cands, slots, str(day), samples)
         w = calendar.weight(calendar.week_of(day)) if weighted else 1.0
         total += w * pts

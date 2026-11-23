@@ -455,7 +455,7 @@ function h2hFaceoff(m, pair, A, B) {
   const first = A.lineups[0] && A.lineups[0].date === a.date;
   for (const x of (first && A.activate) || []) notes.push(`<div class="fo-note me"><span class="urg now">Activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
   for (const x of (a.moves || [])) notes.push(`<div class="fo-note me"><span class="urg soon">${x.kind === 'stash' ? 'Stash' : 'Add'}</span> ${pill(x.id)}${x.kind === 'stash' ? ' to IR' : ''} for ${x.drop ? pill(x.drop) : 'the open spot'}</div>`);
-  for (const x of (first && B.activate) || []) notes.push(`<div class="fo-note them"><span class="urg fyi">They activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
+  for (const x of (B.activate || []).filter(x => x.day ? (x.day === a.date || (first && x.day < a.date)) : first)) notes.push(`<div class="fo-note them"><span class="urg fyi">They activate</span> ${pill(x.id)} from IR${x.drop ? ` for ${pill(x.drop)}` : ''}</div>`);
   const st = B.streams && B.streams[a.date];
   if (st) notes.push(`<div class="fo-note them"><span class="urg fyi">They could add</span> ${pill(st.id)} for ${pill(st.drop)} <span class="muted">+${n0(st.gain)}</span></div>`);
   const LM = today && m.me.live, LT = today && m.them.live;
@@ -622,7 +622,7 @@ function nextDayPanel() {
     <span class="nm">${esc(P(id).name)} ${statusChip(P(id))}</span><span class="muted small">${esc(gameOn(P(id), day.date))}</span><span class="r">${locked ? 'locked' : n1(pts)}</span></div>`).join('');
   const out = day.bench.filter(b => b[1] > 0).map(([id, prob, start]) => `<div class="lu-row out" data-pid="${id}"><span class="chip slot">OUT</span>
     <span class="nm">${esc(P(id).name)}</span><span class="muted small">${esc(gameOn(P(id), day.date))} · starts only if a starter sits (${Math.round(100 * start)}%)</span>
-    <span class="r">${n1(prob * P(id).ros.fppg)}</span></div>`).join('');
+    <span class="r">${n1(prob * P(id).ros.fppg * ((P(id).ros.limit || {})[day.date] || 1))}</span></div>`).join('');
   const moves = day.moves.map(m => `add ${esc(P(m.id).name)}${m.drop ? ' for ' + esc(P(m.drop).name) : ''}`).join(', ');
   const verdict = day.bench.length
     ? `<b>${plural(day.games, 'player')} have a game, but only ${day.games - day.bench.length} can start</b>${empty ? `: ${plural(empty, 'slot')} can't be filled by position` : ': more games than slots'}.
@@ -1532,6 +1532,7 @@ function openPlayer(id) {
       <p class="small muted">Against every player the HQ tracks. Rest-of-season per game is the projection, which blends a short start with his preseason number, so it ranks everyone.</p></div>` : ''}
     <div class="sec"><div class="h">Rest of season</div><dl class="kv">
       <dt>Per game</dt><dd><b>${n1(r.fppg)}</b> · ${prior}</dd>
+      ${r.limit ? `<dt>Minutes limit</dt><dd>${Object.keys(r.limit).length} game${Object.keys(r.limit).length === 1 ? '' : 's'} through ${dayShort(Object.keys(r.limit).sort().pop())} at ${Math.round(100 * Math.min(...Object.values(r.limit)))}% of his points a game (season note); those games don't count toward his minutes</dd>` : ''}
       <dt>Games</dt><dd>${n1(r.games)} expected of ${r.team_games} left${r.absent ? ` · ${n1(r.absent)} missed while Out` : ''} · ${n1(r.playoff_games)} in the playoff weeks</dd>
       ${p.lineup ? `<dt>Starts</dt><dd><b>${n0(p.lineup.starts)}</b> expected in your lineup, ${n0(p.lineup.points)} points from them</dd>` : ''}
       <dt>Ceiling</dt><dd><b>${n0(r.ceiling)}</b> in his 1-in-10 game${r.ceiling / Math.max(r.fppg, 1) > 1 + 2.9 / Math.sqrt(Math.max(r.fppg, 5)) + 0.03 ? ' · spikier than most at his average' : ''}</dd>

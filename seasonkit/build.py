@@ -231,7 +231,7 @@ def past_days(cookies, league, players, calendar, problems, week=None):
                         continue
                     pid, p = e["playerId"], players.get(e["playerId"])
                     game = bool(p and calendar.game_on(p["team"], day))
-                    exp = model.NEAR_TERM_PLAY * p["ros"]["fppg"] if game else 0.0
+                    exp = model.NEAR_TERM_PLAY * model.game_pts(p, day) if game else 0.0
                     rows.append([slot, pid if p else None, round(exp, 1),
                                  round((e.get("playerPoolEntry") or {}).get("appliedStatTotal") or 0.0, 1), game])
                 rows.sort(key=lambda r: league["starting"].index(r[0]))
@@ -439,8 +439,12 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
     tip = {g["id"]: g["tip"] for g in games}
     for p in players.values():
         mine = (log["players"].get(str(p["id"])) or {})
-        played = [(g[0], g[1]) for gid, g in sorted(mine.items(), key=lambda kv: tip.get(int(kv[0]), 0))]
-        model.value_player(p, priors, injuries, notes, calendar, cal_fit, played)
+        rows = sorted(mine.items(), key=lambda kv: tip.get(int(kv[0]), 0))
+        played = [(g[0], g[1]) for _, g in rows]
+        days = [model.et_date(tip[int(gid)]) if int(gid) in tip else None for gid, _ in rows] if p["id"] in notes else None
+        if days and None in days:
+            days = None
+        model.value_player(p, priors, injuries, notes, calendar, cal_fit, played, days)
         p["proj_mpg"] = ((priors["players"].get(str(p["id"])) or {}).get("mpg")
                          or ((p["stats"].get("proj") or [None, None])[1]))
         if p["id"] in notes and notes[p["id"]].get("note"):
@@ -459,7 +463,7 @@ def build(cookies=None, now=None, verbose=True, with_news=True):
         week = calendar.current_week()
         days = {str(d) for d in calendar.days_left_in_week(week)} if week is not None else set()
         p["week"] = {"games": sum(1 for d in days if d in p["odds"]),
-                     "points": round(sum(p["odds"].get(d, 0.0) for d in days) * p["ros"]["fppg"], 1)}
+                     "points": round(sum(p["odds"].get(d, 0.0) * model.game_pts(p, d) for d in days), 1)}
 
     # transactions from the last four scoring days (also: has today's add been used?)
     sp = league["scoring_period"] or 1

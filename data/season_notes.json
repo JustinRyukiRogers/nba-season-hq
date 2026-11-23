@@ -6,6 +6,7 @@
     "fppg_delta: points per game to add to (or take off) his rest-of-season projection.",
     "note: text shown on his card.",
     "play: {\"YYYY-MM-DD\": 0-1} sets his chance of playing that game, over ESPN's day-to-day and the injury report tag.",
+    "minutes_limit: {\"mpg\": 24, \"until\": \"YYYY-MM-DD\"} for a player back under a minutes cap: games through that date count at cap / his usual minutes of his points a game, and games he played in that window don't move his minutes estimate (they still count for points a minute).",
     "skip: true to stop suggesting him to you (adds, stashes, streams); he still counts as a free agent others can take.",
     "This file is public in the GitHub repo. Commit and push to apply it; the next refresh picks it up."
   ],
@@ -15,7 +16,11 @@
       "play": {
         "2026-11-23": 0.9
       },
-      "note": "Set 2026-11-20: Shams reports he makes his season debut Mon Nov 23 vs HOU, so he misses Sat at DAL. Was Tue Nov 17 (set Nov 12), Fri Nov 13 (set Nov 8), Dec 1 (set Oct 19)."
+      "note": "Set 2026-11-23: debut tonight vs HOU after Achilles surgery in May; Rotowire (Nov 20) expects a minutes restriction. Capped at 24 minutes through Sun Nov 29 as an estimate until his first games show the real limit. Earlier: debut set Nov 20 from Shams (was Tue Nov 17, Fri Nov 13, Dec 1).",
+      "minutes_limit": {
+        "mpg": 24,
+        "until": "2026-11-29"
+      }
     },
     "Luka Doncic": {
       "play": {
