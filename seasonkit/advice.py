@@ -591,6 +591,8 @@ def week_plan(league, players, me, calendar, txs=(), stash=None, pick=None, wait
     first_tip = calendar.first_tip(calendar.today)
     open_days = [d for d in days if d > calendar.today or not (first_tip and calendar.now >= first_tip)]
     last = min((parse_day(m["day"]) for m in moves), default=None)
+    for a in activate:            # not yet placed: run() leaves him in IR while an earlier one is timed
+        a["day"] = None           # (2026-11-22: Murphy and Ingram back at once crashed every refresh)
     for a in activate:
         best = None
         for d in [d for d in open_days if last is None or d <= last] or open_days[:1]:
